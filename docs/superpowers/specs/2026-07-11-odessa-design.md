@@ -62,36 +62,43 @@ game template):
 
 ## 2. Authoring a sketch
 
-The p5 feel: open a file, write `setup`/`draw`, keep state in plain variables, call
-bare functions. Odin requires unique top-level names per package, so **each sketch is
-its own package (its own folder)** — giving every sketch a clean namespace and natural
+The p5 feel: open a file, write `setup`/`draw`, keep **your own state in plain
+globals**. Odin requires unique top-level names per package, so **each sketch is its
+own package (its own folder)** — giving every sketch a clean namespace and natural
 global names. The in-app scaffolder makes the folder ceremony invisible.
 
+**Library calls are qualified, not bare.** Current Odin removed `using import` and
+disallows `using pkg` at file scope, so `circle()` isn't achievable across a package
+boundary. The `canvas` library is imported under the single-letter alias `c`, so
+library calls read `c.circle(...)`. **Your own state globals stay bare** (`t`,
+`particles`). Caveat: don't name a local variable `c` in a sketch — it would shadow
+the library alias.
+
 ```odin
-package flowfield              // each sketch is its own tiny package (a folder)
-using import cv "../../canvas" // pull the library in; `using` gives bare names
+package flowfield          // each sketch is its own tiny package (a folder)
+import c "../../canvas"    // the library, aliased to `c`
 
 // --- your state: ordinary package globals, named however you like ---
 t:         f32
-particles: [8000]Vec2
+particles: [8000]c.Vec2
 
 setup :: proc() {
-    size(900, 900)
-    for &p in particles do p = random_vec2()
+    c.size(900, 900)
+    for &p in particles do p = c.random_vec2()
 }
 
 draw :: proc() {
-    background(10, 10, 12, 20)   // low alpha = trails
-    stroke(255)
+    c.background(10, 10, 12, 20)   // low alpha = trails
+    c.stroke(255)
     t += 0.01
     for &p in particles {
-        angle := noise(p.x*0.002, p.y*0.002, t) * TAU
-        p += vec2(cos(angle), sin(angle))
-        point(p.x, p.y)
+        angle := c.noise(p.x*0.002, p.y*0.002, t) * c.TAU
+        p += c.vec2(math.cos(angle), math.sin(angle))
+        c.point(p.x, p.y)
     }
 }
 
-@(init) register :: proc() { sketch("Flow Field", setup, draw) }
+@(init) register :: proc() { c.sketch("Flow Field", setup, draw) }
 ```
 
 - A sketch registers itself into the gallery via an `@(init)` proc calling
@@ -203,7 +210,7 @@ in the DLL are wiped/re-initialized on every reload.**
 | Decision | Choice |
 |---|---|
 | Primary goal | A real tool for making art |
-| Authoring model | Processing-style `setup`/`draw` with bare globals |
+| Authoring model | Processing-style `setup`/`draw`; user state = bare globals; library calls qualified via alias `c` (`c.circle(...)`) |
 | Sketch types to support | Generative, animation, interactive, data/vector (all four) |
 | Run model | Sketch gallery + hot reload (a personal studio) |
 | Export scope (v1) | PNG frame + numbered PNG sequence |
