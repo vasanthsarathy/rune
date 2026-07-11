@@ -1,0 +1,16 @@
+# Odin build artifacts
+*.exe
+*.dll
+*.lib
+*.exp
+*.pdb
+*.obj
+*.o
+*.bin
+
+# Sketch output
+**/output/
+
+# OS
+.DS_Store
+Thumbs.db
