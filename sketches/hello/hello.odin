@@ -1,5 +1,4 @@
-#+feature global-context
-package hello
+package main
 
 import c "../../canvas"
 import "core:math"
@@ -32,6 +31,6 @@ draw :: proc() {
 	c.circle(c.mouse_x, c.mouse_y, 12)
 }
 
-@(init) _register :: proc() {
-	c.sketch("Hello", setup, draw)
+main :: proc() {
+	c.run(setup, draw)
 }
