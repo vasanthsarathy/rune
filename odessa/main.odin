@@ -25,13 +25,21 @@ Status :: enum { Idle, Compiling, Running, Compile_Error }
 App :: struct {
 	run:            runner.Runner,
 	status:         Status,
-	console:        string, // last build output (owned)
-	console_scroll: int,    // first visible line index
+	console:        string,   // last build output (owned)
+	console_lines:  []string, // console split into lines once per build (owned; slices into console)
+	console_scroll: int,      // first visible line index
 }
 
 CONSOLE_TOP :: 56
 LINE_H      :: 18
 FONT_SIZE   :: 16
+
+// Number of console lines that fit in the current window (never negative).
+console_visible_lines :: proc() -> int {
+	h := int(rl.GetScreenHeight()) - 8 - CONSOLE_TOP
+	if h < 0 { return 0 }
+	return h / LINE_H
+}
 
 status_text :: proc(s: Status) -> cstring {
 	switch s {
@@ -70,12 +78,23 @@ do_run :: proc(app: ^App) {
 	// loop's draw phase — no nested BeginDrawing).
 	rl.BeginDrawing(); draw_ui(app); rl.EndDrawing()
 
+	if app.console_lines != nil {
+		delete(app.console_lines)
+		app.console_lines = nil
+	}
 	if app.console != "" {
 		delete(app.console)
 		app.console = ""
 	}
+	app.console_scroll = 0
 	res := runner.build(SKETCH_DIR, SKETCH_EXE)
 	app.console = res.output
+	// Split once per build (not per frame). split_lines yields a phantom trailing
+	// "" when the output ends in '\n' — drop it.
+	app.console_lines = strings.split_lines(app.console, context.allocator)
+	if n := len(app.console_lines); n > 0 && app.console_lines[n-1] == "" {
+		app.console_lines = app.console_lines[:n-1]
+	}
 	if !res.ok {
 		app.status = .Compile_Error
 		return
@@ -88,31 +107,26 @@ do_stop :: proc(app: ^App) {
 	app.status = .Idle
 }
 
+// Pure render of the (already-clamped) console. Scroll clamping lives in the
+// update phase; this proc has no side effects.
 draw_console :: proc(app: ^App) {
 	top: i32 = CONSOLE_TOP
 	bottom := rl.GetScreenHeight() - 8
+	if bottom <= top { return } // window too short to show a console
 	rl.DrawRectangle(0, CONSOLE_TOP-4, rl.GetScreenWidth(), bottom-(CONSOLE_TOP-4), rl.Color{16, 16, 20, 255})
 
-	if app.console == "" {
+	if len(app.console_lines) == 0 {
 		rl.DrawText("(console)", 8, top, FONT_SIZE, rl.Color{90, 90, 100, 255})
 		return
-	}
-
-	lines := strings.split_lines(app.console, context.temp_allocator)
-	max_visible := int((bottom - top) / LINE_H)
-
-	// clamp scroll
-	if app.console_scroll < 0 { app.console_scroll = 0 }
-	if app.console_scroll > max(0, len(lines)-max_visible) {
-		app.console_scroll = max(0, len(lines)-max_visible)
 	}
 
 	col := rl.Color{200, 200, 205, 255}
 	if app.status == .Compile_Error { col = rl.Color{255, 180, 180, 255} }
 
+	max_visible := console_visible_lines()
 	y := top
-	for i := app.console_scroll; i < len(lines) && int((y-top)/LINE_H) < max_visible; i += 1 {
-		ctext := strings.clone_to_cstring(lines[i], context.temp_allocator)
+	for i := app.console_scroll; i < len(app.console_lines) && (i - app.console_scroll) < max_visible; i += 1 {
+		ctext := strings.clone_to_cstring(app.console_lines[i], context.temp_allocator)
 		rl.DrawText(ctext, 8, y, FONT_SIZE, col)
 		y += LINE_H
 	}
@@ -158,11 +172,16 @@ main :: proc() {
 		if wheel := rl.GetMouseWheelMove(); wheel != 0 {
 			app.console_scroll -= int(wheel * 3)
 		}
+		// Clamp scroll here (update phase), guarding a shrunk window.
+		max_scroll := max(0, len(app.console_lines) - console_visible_lines())
+		app.console_scroll = clamp(app.console_scroll, 0, max_scroll)
 
 		// --- draw ---
 		rl.BeginDrawing()
 		draw_ui(&app)
 		rl.EndDrawing()
+
+		free_all(context.temp_allocator) // reclaim per-frame temp allocations (console cstrings, etc.)
 	}
 
 	runner.stop(&app.run) // hygiene: never orphan the sketch
