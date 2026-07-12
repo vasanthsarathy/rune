@@ -31,7 +31,7 @@ _pending_w: int
 _pending_h: int
 _size_dirty: bool
 
-args_to_color :: proc(args: []u8) -> Color {
+@(private) args_to_color :: proc(args: []u8) -> Color {
 	switch len(args) {
 	case 1: return Color{args[0], args[0], args[0], 255}
 	case 2: return Color{args[0], args[0], args[0], args[1]}
@@ -41,7 +41,7 @@ args_to_color :: proc(args: []u8) -> Color {
 	return BLACK
 }
 
-_rlcol :: proc(col: Color) -> rl.Color { return rl.Color{col.r, col.g, col.b, col.a} }
+@(private) _rlcol :: proc(col: Color) -> rl.Color { return rl.Color{col.r, col.g, col.b, col.a} }
 
 size :: proc(w, h: int) {
 	_pending_w = w
@@ -49,8 +49,8 @@ size :: proc(w, h: int) {
 	_size_dirty = true
 }
 
-// Called by the runtime once per frame, before the sketch's draw.
-frame_begin :: proc() {
+// Called by run() once per frame, before the sketch's draw.
+@(private) frame_begin :: proc() {
 	_fill_col   = WHITE
 	_fill_on    = true
 	_stroke_col = BLACK
@@ -58,7 +58,7 @@ frame_begin :: proc() {
 	_stroke_w   = 1
 }
 
-set_frame_inputs :: proc(w, h, frame: int, t, dt, mx, my: f32, pressed: bool) {
+@(private) set_frame_inputs :: proc(w, h, frame: int, t, dt, mx, my: f32, pressed: bool) {
 	width, height = w, h
 	frame_count = frame
 	time, delta_time = t, dt
@@ -67,24 +67,45 @@ set_frame_inputs :: proc(w, h, frame: int, t, dt, mx, my: f32, pressed: bool) {
 	mouse_pressed = pressed
 }
 
-apply_pending_size :: proc() {
+@(private) apply_pending_size :: proc() {
 	if _size_dirty {
 		rl.SetWindowSize(i32(_pending_w), i32(_pending_h))
 		_size_dirty = false
 	}
 }
 
-Sketch_Proc :: proc()
-Sketch_Entry :: struct {
-	name:  string,
-	setup: Sketch_Proc,
-	draw:  Sketch_Proc,
+SKETCH_TITLE :: "Odessa Sketch"
+DEFAULT_W    :: 800
+DEFAULT_H    :: 800
+
+// Opens the window, runs setup once, then draws every frame until the window closes.
+// This is the sketch program's entry point (called from the sketch's main).
+run :: proc(user_setup: proc(), user_draw: proc()) {
+	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT})
+	rl.InitWindow(DEFAULT_W, DEFAULT_H, SKETCH_TITLE)
+	rl.SetTargetFPS(60)
+	defer rl.CloseWindow()
+
+	if user_setup != nil { user_setup() }
+	apply_pending_size()   // honor a size() call made in setup
+
+	frame := 0
+	for !rl.WindowShouldClose() {
+		mp := rl.GetMousePosition()
+		set_frame_inputs(
+			int(rl.GetScreenWidth()), int(rl.GetScreenHeight()),
+			frame,
+			f32(rl.GetTime()), rl.GetFrameTime(),
+			mp.x, mp.y, rl.IsMouseButtonDown(.LEFT),
+		)
+		frame_begin()
+
+		rl.BeginDrawing()
+		rl.ClearBackground(rl.Color{18, 18, 22, 255})
+		if user_draw != nil { user_draw() }
+		rl.EndDrawing()
+
+		free_all(context.temp_allocator)
+		frame += 1
+	}
 }
-
-_registry: [dynamic]Sketch_Entry
-
-sketch :: proc(name: string, setup, draw: Sketch_Proc) {
-	append(&_registry, Sketch_Entry{name, setup, draw})
-}
-
-registry :: proc() -> []Sketch_Entry { return _registry[:] }
