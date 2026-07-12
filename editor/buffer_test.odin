@@ -85,3 +85,62 @@ import "core:testing"
 	testing.expect_value(t, b.cursor.line, 0)
 	testing.expect_value(t, b.cursor.col, 2)
 }
+
+@(test) test_selection_range_normalized :: proc(t: ^testing.T) {
+	b := make_buffer("abcdef")
+	defer destroy_buffer(&b)
+	set_cursor(&b, 0, 4)
+	move(&b, .Left, true) // cursor=3, anchor=4
+	move(&b, .Left, true) // cursor=2, anchor=4
+	start, end := selection_range(&b)
+	testing.expect_value(t, start.col, 2)
+	testing.expect_value(t, end.col, 4)
+}
+
+@(test) test_selected_text :: proc(t: ^testing.T) {
+	b := make_buffer("hello\nworld")
+	defer destroy_buffer(&b)
+	set_cursor(&b, 0, 2)
+	set_cursor(&b, 1, 3, true) // anchor (0,2) .. cursor (1,3)
+	s := selected_text(&b); defer delete(s)
+	testing.expect_value(t, s, "llo\nwor")
+}
+
+@(test) test_delete_selection :: proc(t: ^testing.T) {
+	b := make_buffer("hello\nworld")
+	defer destroy_buffer(&b)
+	set_cursor(&b, 0, 2)
+	set_cursor(&b, 1, 3, true)
+	delete_selection(&b)
+	s := to_string(&b); defer delete(s)
+	testing.expect_value(t, s, "held")
+	testing.expect_value(t, b.cursor.line, 0)
+	testing.expect_value(t, b.cursor.col, 2)
+	testing.expect(t, !b.sel)
+}
+
+@(test) test_insert_replaces_selection :: proc(t: ^testing.T) {
+	b := make_buffer("abcd")
+	defer destroy_buffer(&b)
+	set_cursor(&b, 0, 1)
+	set_cursor(&b, 0, 3, true) // select "bc"
+	insert_text(&b, "X")
+	s := to_string(&b); defer delete(s)
+	testing.expect_value(t, s, "aXd")
+}
+
+@(test) test_undo_redo :: proc(t: ^testing.T) {
+	b := make_buffer("a")
+	defer destroy_buffer(&b)
+	set_cursor(&b, 0, 1)
+	push_undo(&b)
+	insert_text(&b, "bc")
+	s1 := to_string(&b); defer delete(s1)
+	testing.expect_value(t, s1, "abc")
+	undo(&b)
+	s2 := to_string(&b); defer delete(s2)
+	testing.expect_value(t, s2, "a")
+	redo(&b)
+	s3 := to_string(&b); defer delete(s3)
+	testing.expect_value(t, s3, "abc")
+}

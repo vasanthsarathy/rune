@@ -169,7 +169,85 @@ move :: proc(b: ^Buffer, dir: Move, select := false) {
 	}
 }
 
-// Stub replaced in Task 2 (needed now so editing procs compile).
+// --- selection ---
+
+@(private) cursor_less :: proc(a, b: Cursor) -> bool {
+	if a.line != b.line { return a.line < b.line }
+	return a.col < b.col
+}
+
+has_selection :: proc(b: ^Buffer) -> bool {
+	return b.sel && b.anchor != b.cursor
+}
+
+selection_range :: proc(b: ^Buffer) -> (start, end: Cursor) {
+	if cursor_less(b.cursor, b.anchor) { return b.cursor, b.anchor }
+	return b.anchor, b.cursor
+}
+
+selected_text :: proc(b: ^Buffer, allocator := context.allocator) -> string {
+	if !has_selection(b) { return strings.clone("", allocator) }
+	start, end := selection_range(b)
+	sb: strings.Builder
+	strings.builder_init(&sb, allocator)
+	for ln in start.line..=end.line {
+		lo := 0 if ln > start.line else start.col
+		hi := len(b.lines[ln]) if ln < end.line else end.col
+		if ln > start.line { strings.write_byte(&sb, '\n') }
+		strings.write_bytes(&sb, b.lines[ln][lo:hi])
+	}
+	return strings.to_string(sb)
+}
+
 delete_selection :: proc(b: ^Buffer) {
+	if !has_selection(b) { b.sel = false; return }
+	start, end := selection_range(b)
+	if start.line == end.line {
+		remove_range(&b.lines[start.line], start.col, end.col)
+	} else {
+		// keep head of start line + tail of end line; drop the lines between
+		resize(&b.lines[start.line], start.col)
+		append(&b.lines[start.line], ..b.lines[end.line][end.col:])
+		for ln := end.line; ln > start.line; ln -= 1 {
+			delete(b.lines[ln])
+			ordered_remove(&b.lines, ln)
+		}
+	}
+	b.cursor = start
 	b.sel = false
+}
+
+// --- undo / redo (snapshot-based) ---
+
+push_undo :: proc(b: ^Buffer) {
+	append(&b.undo, Snapshot{ text = to_string(b), cursor = b.cursor })
+	for s in b.redo { delete(s.text) }
+	clear(&b.redo)
+}
+
+@(private) restore :: proc(b: ^Buffer, snap: Snapshot) {
+	for &line in b.lines { delete(line) }
+	clear(&b.lines)
+	tmp := make_buffer(snap.text)
+	for line in tmp.lines { append(&b.lines, line) }
+	delete(tmp.lines) // move lines into b; free only tmp's header array
+	b.cursor.line = clampi(snap.cursor.line, 0, len(b.lines)-1)
+	b.cursor.col  = clampi(snap.cursor.col, 0, len(b.lines[b.cursor.line]))
+	b.sel = false
+}
+
+undo :: proc(b: ^Buffer) {
+	if len(b.undo) == 0 { return }
+	append(&b.redo, Snapshot{ text = to_string(b), cursor = b.cursor })
+	snap := pop(&b.undo)
+	restore(b, snap)
+	delete(snap.text)
+}
+
+redo :: proc(b: ^Buffer) {
+	if len(b.redo) == 0 { return }
+	append(&b.undo, Snapshot{ text = to_string(b), cursor = b.cursor })
+	snap := pop(&b.redo)
+	restore(b, snap)
+	delete(snap.text)
 }
