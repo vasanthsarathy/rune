@@ -2,6 +2,7 @@ package main
 
 import rl "vendor:raylib"
 import "core:os"
+import "core:strings"
 import "../runner"
 
 // True if the given flag was passed on the command line.
@@ -22,10 +23,15 @@ STOP_RECT :: rl.Rectangle{106, 8, 90, 32}
 Status :: enum { Idle, Compiling, Running, Compile_Error }
 
 App :: struct {
-	run:     runner.Runner,
-	status:  Status,
-	console: string, // last build output (owned)
+	run:            runner.Runner,
+	status:         Status,
+	console:        string, // last build output (owned)
+	console_scroll: int,    // first visible line index
 }
+
+CONSOLE_TOP :: 56
+LINE_H      :: 18
+FONT_SIZE   :: 16
 
 status_text :: proc(s: Status) -> cstring {
 	switch s {
@@ -82,8 +88,39 @@ do_stop :: proc(app: ^App) {
 	app.status = .Idle
 }
 
+draw_console :: proc(app: ^App) {
+	top: i32 = CONSOLE_TOP
+	bottom := rl.GetScreenHeight() - 8
+	rl.DrawRectangle(0, CONSOLE_TOP-4, rl.GetScreenWidth(), bottom-(CONSOLE_TOP-4), rl.Color{16, 16, 20, 255})
+
+	if app.console == "" {
+		rl.DrawText("(console)", 8, top, FONT_SIZE, rl.Color{90, 90, 100, 255})
+		return
+	}
+
+	lines := strings.split_lines(app.console, context.temp_allocator)
+	max_visible := int((bottom - top) / LINE_H)
+
+	// clamp scroll
+	if app.console_scroll < 0 { app.console_scroll = 0 }
+	if app.console_scroll > max(0, len(lines)-max_visible) {
+		app.console_scroll = max(0, len(lines)-max_visible)
+	}
+
+	col := rl.Color{200, 200, 205, 255}
+	if app.status == .Compile_Error { col = rl.Color{255, 180, 180, 255} }
+
+	y := top
+	for i := app.console_scroll; i < len(lines) && int((y-top)/LINE_H) < max_visible; i += 1 {
+		ctext := strings.clone_to_cstring(lines[i], context.temp_allocator)
+		rl.DrawText(ctext, 8, y, FONT_SIZE, col)
+		y += LINE_H
+	}
+}
+
 draw_ui :: proc(app: ^App) {
 	rl.ClearBackground(rl.Color{24, 24, 28, 255})
+	draw_console(app)
 	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), 48, rl.Color{32, 32, 38, 255})
 	draw_button(RUN_RECT, "Run", app.status != .Running && app.status != .Compiling)
 	draw_button(STOP_RECT, "Stop", app.status == .Running)
@@ -117,6 +154,10 @@ main :: proc() {
 
 		if run_now  { do_run(&app) }
 		if stop_now { do_stop(&app) }
+
+		if wheel := rl.GetMouseWheelMove(); wheel != 0 {
+			app.console_scroll -= int(wheel * 3)
+		}
 
 		// --- draw ---
 		rl.BeginDrawing()
