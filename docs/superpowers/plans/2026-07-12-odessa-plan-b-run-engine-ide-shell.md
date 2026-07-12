@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Language:** Odin. **The process API is in `core:os`** in this toolchain (verified): `os.Process_Desc{ command = []string{...} }`; `os.process_exec(desc, allocator) -> (state: os.Process_State, stdout: []byte, stderr: []byte, err: os.Error)` where `state.success: bool` and `state.exit_code: int`; `os.process_start(desc) -> (os.Process, os.Error)`; `os.process_kill(p) -> os.Error`; `os.process_wait(p, timeout) -> (os.Process_State, os.Error)`. **`core:os/os2` does NOT exist here — do not import it.**
+- **Language:** Odin. **The process API is in `core:os`** in this toolchain (verified): `os.Process_Desc{ command = []string{...} }`; `os.process_exec(desc, allocator) -> (state: os.Process_State, stdout: []byte, stderr: []byte, err: os.Error)` where `state.exit_code: int` (**use this** — 0 = success), `state.exited: bool`, and `state.success: bool` (means "ran to completion", NOT "exit 0" — do not use it to detect build failure); `os.process_start(desc) -> (os.Process, os.Error)`; `os.process_kill(p) -> os.Error`; `os.process_wait(p, timeout) -> (os.Process_State, os.Error)`. **`core:os/os2` does NOT exist here — do not import it.**
 - **No hot reload / no DLL:** the IDE compiles and launches a standalone sketch program, and kills it. Nothing reloads.
 - **Scoped simplification from the spec:** the spec (§5) says Odessa injects `main` at build time so sketch files stay clean. **This plan does NOT implement main-injection** — sketches keep the visible `main :: proc() { c.run(setup, draw) }` from Plan A, and Odessa builds the sketch directory directly. (Main-injection is deferred to a later fast-follow; noted so sketch files carry a one-line `main` for now.)
 - **Which sketch:** v1 has no file picker/editor, so the IDE targets a fixed sketch by name — the constant `SKETCH_NAME :: "hello"`. Plan C's editor makes this dynamic.
@@ -130,8 +130,10 @@ build :: proc(src_dir, out_exe: string, allocator := context.allocator) -> Build
 		return Build_Result{ ok = false, output = strings.clone("failed to run the Odin compiler", allocator) }
 	}
 	// Compiler diagnostics go to stderr; keep stdout too for completeness.
+	// NOTE: state.success means "ran to completion", NOT "exit 0" — a failed
+	// compile has success=true, exit_code=1. Key off exit_code.
 	combined := strings.concatenate({string(stdout), string(stderr)}, allocator)
-	return Build_Result{ ok = state.success, output = combined }
+	return Build_Result{ ok = state.exit_code == 0, output = combined }
 }
 
 Runner :: struct {
