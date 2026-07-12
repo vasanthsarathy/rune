@@ -18,17 +18,17 @@ import "core:testing"
 	}
 }
 
-@(test) test_random_range :: proc(t: ^testing.T) {
+@(test) test_global_rng :: proc(t: ^testing.T) {
+	// Test that seed resets sequence correctly
+	seed(7)
+	first := random()
+	seed(7)
+	testing.expect(t, random() == first)
+
+	// Test that random_range produces values in correct interval
 	seed(42)
 	for _ in 0..<1000 {
 		v := random_range(10, 20)
 		testing.expect(t, v >= 10 && v < 20)
 	}
-}
-
-@(test) test_seed_resets_sequence :: proc(t: ^testing.T) {
-	seed(7)
-	first := random()
-	seed(7)
-	testing.expect(t, random() == first)
 }
