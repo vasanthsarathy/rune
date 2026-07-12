@@ -2,6 +2,7 @@ package runner
 
 import "core:os"
 import "core:strings"
+import "core:path/filepath"
 
 Build_Result :: struct {
 	ok:     bool,
@@ -32,7 +33,13 @@ Runner :: struct {
 
 // Launch an already-built exe as a detached child. Returns whether it started.
 launch :: proc(r: ^Runner, exe_path: string) -> bool {
-	desc := os.Process_Desc{ command = []string{exe_path} }
+	// process_start needs a native, absolute path: on Windows a forward-slash
+	// relative path like "build/hello.exe" resolves to Not_Exist.
+	abs_path, abs_err := filepath.abs(exe_path, context.temp_allocator)
+	if abs_err != nil {
+		abs_path = exe_path
+	}
+	desc := os.Process_Desc{ command = []string{abs_path} }
 	p, err := os.process_start(desc)
 	if err != nil {
 		return false
