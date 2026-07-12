@@ -29,7 +29,7 @@
   host/
     host.odin            # package main -> odessa.exe: reload loop + source watcher + build spawner
   runtime/
-    runtime.odin         # package runtime: @(export) odessa_* lifecycle; Odessa_Memory; per-frame loop
+    runtime.odin         # package odessa_runtime (name `runtime` is reserved in Odin): @(export) odessa_* lifecycle; Odessa_Memory; per-frame loop
     sketches_manifest.odin  # `import _ "../sketches/<slug>"` lines (one per sketch; hand-edited for now)
   canvas/
     canvas.odin          # package canvas: window/frame state, width/height/mouse/time mirrors, sketch registry
@@ -80,7 +80,7 @@ Adapt the template's verified host loop and produce a runtime DLL that opens a w
 Create `runtime/runtime.odin`:
 
 ```odin
-package runtime
+package odessa_runtime
 
 import rl "vendor:raylib"
 
@@ -840,7 +840,7 @@ draw :: proc() {
 Create `runtime/sketches_manifest.odin`. The blank import pulls the sketch package into the build so its `@(init)` runs. (Plan 3's scaffolder will append lines here automatically; for now it is hand-edited.)
 
 ```odin
-package runtime
+package odessa_runtime
 
 import _ "../sketches/hello"
 ```
@@ -850,7 +850,7 @@ import _ "../sketches/hello"
 Replace `runtime/runtime.odin` with:
 
 ```odin
-package runtime
+package odessa_runtime
 
 import rl "vendor:raylib"
 import c "../canvas"
