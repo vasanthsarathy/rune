@@ -30,7 +30,9 @@ make_buffer :: proc(s: string) -> Buffer {
 	start := 0
 	for i in 0..=len(s) {
 		if i == len(s) || s[i] == '\n' {
-			append(&b.lines, make_line(transmute([]u8)s[start:i]))
+			end := i
+			if end > start && s[end-1] == '\r' { end -= 1 } // normalize CRLF -> LF
+			append(&b.lines, make_line(transmute([]u8)s[start:end]))
 			start = i + 1
 		}
 	}

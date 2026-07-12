@@ -11,6 +11,14 @@ import "core:testing"
 	testing.expect_value(t, len(b.lines), 2)
 }
 
+@(test) test_crlf_normalized_to_lf :: proc(t: ^testing.T) {
+	b := make_buffer("a\r\nb\r\n")
+	defer destroy_buffer(&b)
+	s := to_string(&b); defer delete(s)
+	testing.expect_value(t, s, "a\nb\n")
+	testing.expect_value(t, len(b.lines), 3) // "a", "b", ""
+}
+
 @(test) test_empty_buffer_has_one_line :: proc(t: ^testing.T) {
 	b := make_buffer("")
 	defer destroy_buffer(&b)
