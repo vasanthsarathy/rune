@@ -1,7 +1,15 @@
 # Odessa — Design Spec
 
+> ⚠️ **SUPERSEDED (2026-07-12).** This spec described a *hot-reload live-coding*
+> studio (external editor + DLL hot-reload + gallery). The project pivoted to a
+> **Processing-style IDE** (built-in code editor + Run/Stop; sketch runs in its
+> own window; **no hot reload**). See the current spec:
+> `docs/superpowers/specs/2026-07-12-odessa-processing-ide-design.md`.
+> The `canvas` library design below (§3) is still accurate and was carried
+> forward; the studio/hot-reload sections (§1, §4, §5) are obsolete.
+
 **Date:** 2026-07-11
-**Status:** Approved (brainstorming complete)
+**Status:** Superseded by the 2026-07-12 Processing-IDE spec
 **Author:** Vasanth + Claude
 
 ## What this is
