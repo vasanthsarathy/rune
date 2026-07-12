@@ -73,3 +73,18 @@ apply_pending_size :: proc() {
 		_size_dirty = false
 	}
 }
+
+Sketch_Proc :: proc()
+Sketch_Entry :: struct {
+	name:  string,
+	setup: Sketch_Proc,
+	draw:  Sketch_Proc,
+}
+
+_registry: [dynamic]Sketch_Entry
+
+sketch :: proc(name: string, setup, draw: Sketch_Proc) {
+	append(&_registry, Sketch_Entry{name, setup, draw})
+}
+
+registry :: proc() -> []Sketch_Entry { return _registry[:] }
