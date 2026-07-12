@@ -4,6 +4,7 @@ import rl "vendor:raylib"
 import "core:os"
 import "core:strings"
 import "../runner"
+import "../editor"
 
 // True if the given flag was passed on the command line.
 has_arg :: proc(name: string) -> bool {
@@ -16,6 +17,7 @@ has_arg :: proc(name: string) -> bool {
 SKETCH_NAME :: "hello"
 SKETCH_DIR  :: "sketches/hello"
 SKETCH_EXE  :: "build/hello.exe"
+SKETCH_FILE :: "sketches/hello/hello.odin"
 
 RUN_RECT  :: rl.Rectangle{8, 8, 90, 32}
 STOP_RECT :: rl.Rectangle{106, 8, 90, 32}
@@ -28,17 +30,40 @@ App :: struct {
 	console:        string,   // last build output (owned)
 	console_lines:  []string, // console split into lines once per build (owned; slices into console)
 	console_scroll: int,      // first visible line index
+	buf:            editor.Buffer, // the sketch source being edited
+	ed_scroll:      int,           // editor's first visible line
 }
 
-CONSOLE_TOP :: 56
-LINE_H      :: 18
-FONT_SIZE   :: 16
+TOOLBAR_H :: 48
+CONSOLE_H :: 150
+LINE_H    :: 18
+FONT_SIZE :: 16
 
-// Number of console lines that fit in the current window (never negative).
+// Number of console lines that fit in the bottom strip.
 console_visible_lines :: proc() -> int {
-	h := int(rl.GetScreenHeight()) - 8 - CONSOLE_TOP
-	if h < 0 { return 0 }
-	return h / LINE_H
+	return CONSOLE_H / LINE_H
+}
+
+// Editor area: below the toolbar, above the console strip.
+editor_area :: proc() -> rl.Rectangle {
+	h := int(rl.GetScreenHeight()) - TOOLBAR_H - CONSOLE_H
+	if h < 0 { h = 0 }
+	return rl.Rectangle{0, TOOLBAR_H, f32(rl.GetScreenWidth()), f32(h)}
+}
+
+load_sketch :: proc(app: ^App) {
+	data, err := os.read_entire_file_from_path(SKETCH_FILE, context.allocator)
+	if err != nil {
+		app.buf = editor.make_buffer("")
+		return
+	}
+	defer delete(data)
+	app.buf = editor.make_buffer(string(data))
+}
+
+save_sketch :: proc(app: ^App) {
+	s := editor.to_string(&app.buf, context.temp_allocator)
+	_ = os.write_entire_file(SKETCH_FILE, transmute([]u8)s)
 }
 
 status_text :: proc(s: Status) -> cstring {
@@ -72,6 +97,7 @@ draw_button :: proc(rect: rl.Rectangle, label: cstring, enabled: bool) {
 }
 
 do_run :: proc(app: ^App) {
+	save_sketch(app) // persist the editor buffer, then build what's on disk
 	runner.stop(&app.run) // stop any prior sketch first
 	app.status = .Compiling
 	// Paint one "Compiling..." frame before the blocking build (outside the main
@@ -107,16 +133,16 @@ do_stop :: proc(app: ^App) {
 	app.status = .Idle
 }
 
-// Pure render of the (already-clamped) console. Scroll clamping lives in the
-// update phase; this proc has no side effects.
-draw_console :: proc(app: ^App) {
-	top: i32 = CONSOLE_TOP
-	bottom := rl.GetScreenHeight() - 8
-	if bottom <= top { return } // window too short to show a console
-	rl.DrawRectangle(0, CONSOLE_TOP-4, rl.GetScreenWidth(), bottom-(CONSOLE_TOP-4), rl.Color{16, 16, 20, 255})
+// Pure render of the (already-clamped) console as a fixed bottom strip starting
+// at top_y. Scroll clamping lives in the update phase; no side effects.
+draw_console_strip :: proc(app: ^App, top_y: int) {
+	top := i32(top_y)
+	bottom := rl.GetScreenHeight()
+	if bottom <= top { return }
+	rl.DrawRectangle(0, top, rl.GetScreenWidth(), bottom-top, rl.Color{16, 16, 20, 255})
 
 	if len(app.console_lines) == 0 {
-		rl.DrawText("(console)", 8, top, FONT_SIZE, rl.Color{90, 90, 100, 255})
+		rl.DrawText("(console)", 8, top+4, FONT_SIZE, rl.Color{90, 90, 100, 255})
 		return
 	}
 
@@ -124,7 +150,7 @@ draw_console :: proc(app: ^App) {
 	if app.status == .Compile_Error { col = rl.Color{255, 180, 180, 255} }
 
 	max_visible := console_visible_lines()
-	y := top
+	y := top + 4
 	for i := app.console_scroll; i < len(app.console_lines) && (i - app.console_scroll) < max_visible; i += 1 {
 		ctext := strings.clone_to_cstring(app.console_lines[i], context.temp_allocator)
 		rl.DrawText(ctext, 8, y, FONT_SIZE, col)
@@ -134,8 +160,15 @@ draw_console :: proc(app: ^App) {
 
 draw_ui :: proc(app: ^App) {
 	rl.ClearBackground(rl.Color{24, 24, 28, 255})
-	draw_console(app)
-	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), 48, rl.Color{32, 32, 38, 255})
+
+	// editor (between toolbar and console strip)
+	editor_draw(&app.buf, editor_area(), &app.ed_scroll)
+
+	// console strip at the bottom
+	draw_console_strip(app, int(rl.GetScreenHeight()) - CONSOLE_H)
+
+	// toolbar on top
+	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), TOOLBAR_H, rl.Color{32, 32, 38, 255})
 	draw_button(RUN_RECT, "Run", app.status != .Running && app.status != .Compiling)
 	draw_button(STOP_RECT, "Stop", app.status == .Running)
 	rl.DrawText(status_text(app.status), 210, 16, 20, rl.Color{200, 200, 210, 255})
@@ -149,6 +182,8 @@ main :: proc() {
 
 	app: App
 	app.status = .Idle
+	load_sketch(&app)
+	defer editor.destroy_buffer(&app.buf)
 
 	// --run: build & launch the sketch immediately on startup (scriptable entry).
 	if has_arg("--run") {
@@ -163,6 +198,13 @@ main :: proc() {
 		}
 
 		ctrl := rl.IsKeyDown(.LEFT_CONTROL) || rl.IsKeyDown(.RIGHT_CONTROL)
+
+		// editor edits (typing goes here; Ctrl combos for run/save handled below)
+		editor_input(&app.buf)
+		editor_mouse(&app.buf, editor_area(), app.ed_scroll)
+
+		if ctrl && rl.IsKeyPressed(.S) { save_sketch(&app) }
+
 		run_now  := button_clicked(RUN_RECT, app.status != .Running && app.status != .Compiling) || (ctrl && rl.IsKeyPressed(.R))
 		stop_now := button_clicked(STOP_RECT, app.status == .Running)
 
