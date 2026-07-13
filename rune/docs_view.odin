@@ -88,12 +88,12 @@ docs_input :: proc() {
 	if rl.IsKeyPressed(.TWO)   { g_ref_tab = .Odin;      g_docs_scroll = 0 }
 	if rl.IsKeyPressed(.THREE) { g_ref_tab = .Shortcuts; g_docs_scroll = 0 }
 
-	// vertical scroll (all tabs)
+	// vertical scroll (all tabs), clamped to content
 	if wheel := rl.GetMouseWheelMove(); wheel != 0 {
 		step := g_ref_tab == .Canvas ? DOCS_ROW : 40
 		g_docs_scroll -= int(wheel*3)*step
-		if g_docs_scroll < 0 { g_docs_scroll = 0 }
 	}
+	g_docs_scroll = clamp(g_docs_scroll, 0, docs_max_scroll())
 
 	if g_ref_tab == .Canvas {
 		for r := rl.GetCharPressed(); r != 0; r = rl.GetCharPressed() {

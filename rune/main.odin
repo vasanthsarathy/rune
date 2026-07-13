@@ -40,9 +40,19 @@ load_ui_font :: proc() {
 	base := i32(f32(FONT_BASE) * dpi)
 
 	candidates := []string{
+		// Windows
 		"C:/Windows/Fonts/consola.ttf",     // Consolas: narrow, light, very readable
 		"C:/Windows/Fonts/CascadiaMono.ttf",
 		"C:/Windows/Fonts/CascadiaCode.ttf",
+		// macOS
+		"/System/Library/Fonts/Menlo.ttc",
+		"/System/Library/Fonts/SFNSMono.ttf",
+		"/Library/Fonts/Menlo.ttc",
+		// Linux
+		"/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+		"/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+		"/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+		"/usr/share/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf",
 	}
 	for path in candidates {
 		if os.exists(path) {
@@ -147,6 +157,7 @@ list_sketches :: proc(app: ^App) {
 	clear(&app.sketches)
 	fis, err := os.read_all_directory_by_path(SKETCHES_ROOT, context.allocator)
 	if err != nil { return }
+	defer os.file_info_slice_delete(fis, context.allocator) // free the listing
 	for f in fis {
 		if f.type == .Directory {
 			append(&app.sketches, strings.clone(f.name))
@@ -164,15 +175,28 @@ load_sketch :: proc(app: ^App) {
 	app.buf = editor.make_buffer(string(data))
 }
 
-save_sketch :: proc(app: ^App) {
+// Write the editor buffer to the sketch file. Returns whether it succeeded.
+save_sketch :: proc(app: ^App) -> bool {
 	s := editor.to_string(&app.buf, context.temp_allocator)
-	_ = os.write_entire_file(sketch_file(current_name(app)), transmute([]u8)s)
+	return os.write_entire_file(sketch_file(current_name(app)), transmute([]u8)s) == nil
+}
+
+// Surface a one-line error message in the console.
+console_error :: proc(app: ^App, msg: string) {
+	if app.console_lines != nil { delete(app.console_lines); app.console_lines = nil }
+	if app.console != "" { delete(app.console) }
+	app.console = strings.clone(msg)
+	app.console_lines = strings.split_lines(app.console, context.allocator)
+	app.status = .Compile_Error
 }
 
 // Switch the open sketch: persist current edits, then load the chosen one.
 open_sketch :: proc(app: ^App, idx: int) {
 	if idx < 0 || idx >= len(app.sketches) || idx == app.current { return }
-	save_sketch(app)
+	if !save_sketch(app) { // don't discard unsaved edits on a failed write
+		console_error(app, strings.concatenate({"Could not save ", current_name(app), " — staying here."}, context.temp_allocator))
+		return
+	}
 	editor.destroy_buffer(&app.buf)
 	app.current = idx
 	app.ed_scroll = 0
@@ -191,10 +215,15 @@ create_sketch :: proc(app: ^App) {
 	if name == "" { return }
 	if os.exists(sketch_dir(name)) { return } // don't clobber an existing sketch
 
+	if !save_sketch(app) { // persist current edits before switching away
+		console_error(app, strings.concatenate({"Could not save ", current_name(app), " — new sketch not created."}, context.temp_allocator))
+		return
+	}
 	if err := os.make_directory(sketch_dir(name)); err != nil { return }
-	_ = os.write_entire_file(sketch_file(name), transmute([]u8)string(NEW_SKETCH_TEMPLATE))
-
-	save_sketch(app)     // persist current edits before switching
+	if os.write_entire_file(sketch_file(name), transmute([]u8)string(NEW_SKETCH_TEMPLATE)) != nil {
+		console_error(app, strings.concatenate({"Could not write ", sketch_file(name)}, context.temp_allocator))
+		return
+	}
 	editor.destroy_buffer(&app.buf)
 	list_sketches(app)   // rescan so the new sketch appears
 	app.current = 0
@@ -253,7 +282,10 @@ draw_button :: proc(rect: rl.Rectangle, label: cstring, enabled: bool, primary :
 }
 
 do_run :: proc(app: ^App) {
-	save_sketch(app) // persist the editor buffer, then build what's on disk
+	if !save_sketch(app) { // persist the editor buffer, then build what's on disk
+		console_error(app, strings.concatenate({"Could not save ", current_name(app), " — not running."}, context.temp_allocator))
+		return
+	}
 	runner.stop(&app.run) // stop any prior sketch first
 	app.status = .Compiling
 	// Paint one "Compiling..." frame before the blocking build (outside the main
@@ -282,7 +314,11 @@ do_run :: proc(app: ^App) {
 		app.status = .Compile_Error
 		return
 	}
-	app.status = runner.launch(&app.run, sketch_exe(current_name(app))) ? .Running : .Idle
+	if runner.launch(&app.run, sketch_exe(current_name(app))) {
+		app.status = .Running
+	} else {
+		console_error(app, strings.concatenate({"Compiled, but could not launch ", sketch_exe(name), " (locked by antivirus?)."}, context.temp_allocator))
+	}
 }
 
 do_stop :: proc(app: ^App) {
@@ -451,7 +487,7 @@ main :: proc() {
 	}
 	load_sketch(&app)
 	defer editor.destroy_buffer(&app.buf)
-	defer { for s in app.sketches { delete(s) }; delete(app.sketches); delete(app.name_buf); delete(g_ac_matches); delete(g_docs_search); delete(g_docs_filtered) }
+	defer { for s in app.sketches { delete(s) }; delete(app.sketches); delete(app.name_buf); delete(g_ac_matches); delete(g_ac_prefix); delete(g_docs_search); delete(g_docs_filtered) }
 
 	// --run: build & launch the sketch immediately on startup (scriptable entry).
 	if has_arg("--run") {

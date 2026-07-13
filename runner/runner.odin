@@ -11,6 +11,10 @@ Build_Result :: struct {
 
 // Compile the Odin package at src_dir into out_exe (debug). Blocking.
 build :: proc(src_dir, out_exe: string, allocator := context.allocator) -> Build_Result {
+	// odin won't create the output directory; ensure it exists (fresh clone).
+	if dir := filepath.dir(out_exe); dir != "" && dir != "." {
+		_ = os.make_directory(dir)
+	}
 	out_arg := strings.concatenate({"-out:", out_exe}, context.temp_allocator)
 	desc := os.Process_Desc{
 		command = []string{"odin", "build", src_dir, out_arg, "-debug"},
@@ -49,7 +53,8 @@ launch :: proc(r: ^Runner, exe_path: string) -> bool {
 	return true
 }
 
-// Kill the running child if any.
+// Kill the running child if any. (core:os has no public process_close; the OS
+// reclaims the handle when the process exits.)
 stop :: proc(r: ^Runner) {
 	if r.running {
 		_ = os.process_kill(r.process)

@@ -152,3 +152,33 @@ import "core:testing"
 	s3 := to_string(&b); defer delete(s3)
 	testing.expect_value(t, s3, "abc")
 }
+
+@(test) test_paste_strips_cr :: proc(t: ^testing.T) {
+	b := make_buffer("")
+	defer destroy_buffer(&b)
+	insert_text(&b, "a\r\nb\r\n")   // Windows clipboard style
+	s := to_string(&b); defer delete(s)
+	testing.expect_value(t, s, "a\nb\n")   // carriage returns dropped
+}
+
+@(test) test_utf8_editing :: proc(t: ^testing.T) {
+	b := make_buffer("")
+	defer destroy_buffer(&b)
+	insert_rune(&b, 'a'); insert_rune(&b, 'é'); insert_rune(&b, 'b') // é = 2 bytes
+	testing.expect_value(t, len(b.lines[0]), 4)
+	testing.expect_value(t, b.cursor.col, 4)
+	// move by rune, not byte
+	move(&b, .Left); testing.expect_value(t, b.cursor.col, 3) // before b
+	move(&b, .Left); testing.expect_value(t, b.cursor.col, 1) // before é (skips continuation byte)
+	move(&b, .End)
+	backspace(&b); testing.expect_value(t, b.cursor.col, 3) // removed b
+	backspace(&b); testing.expect_value(t, b.cursor.col, 1) // removed whole é
+	testing.expect_value(t, len(b.lines[0]), 1)
+}
+
+@(test) test_undo_capped :: proc(t: ^testing.T) {
+	b := make_buffer("x")
+	defer destroy_buffer(&b)
+	for _ in 0..<(UNDO_CAP + 50) { push_undo(&b) }
+	testing.expect(t, len(b.undo) <= UNDO_CAP)
+}

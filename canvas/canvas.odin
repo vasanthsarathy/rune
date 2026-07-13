@@ -29,11 +29,6 @@ _stroke_col:  Color
 _stroke_on:   bool
 _stroke_w:    f32
 
-// --- pending window size requested via size() ---
-_pending_w: int
-_pending_h: int
-_size_dirty: bool
-
 @(private) args_to_color :: proc(args: []u8) -> Color {
 	switch len(args) {
 	case 1: return Color{args[0], args[0], args[0], 255}
@@ -46,10 +41,27 @@ _size_dirty: bool
 
 @(private) _rlcol :: proc(col: Color) -> rl.Color { return rl.Color{col.r, col.g, col.b, col.a} }
 
+@(private) _rt_ready:  bool
+@(private) _rt_active: bool
+
+// (Re)create the canvas render texture at w×h and begin drawing into it, so
+// anything drawn afterwards — including in setup(), e.g. background() — is kept.
+@(private) _make_canvas :: proc(w, h: int) {
+	if _rt_ready {
+		if _rt_active { rl.EndTextureMode(); _rt_active = false }
+		rl.UnloadRenderTexture(_canvas_rt)
+	}
+	width, height = w, h
+	_canvas_rt = rl.LoadRenderTexture(i32(w), i32(h))
+	_rt_ready = true
+	rl.BeginTextureMode(_canvas_rt)
+	_rt_active = true
+	rl.ClearBackground(rl.Color{18, 18, 22, 255})
+}
+
+// Set the canvas size in pixels. Call once at the start of setup().
 size :: proc(w, h: int) {
-	_pending_w = w
-	_pending_h = h
-	_size_dirty = true
+	_make_canvas(w, h)
 }
 
 // Called by run() once per frame, before the sketch's draw.
@@ -89,27 +101,21 @@ run :: proc(user_setup: proc(), user_draw: proc()) {
 	rl.SetTargetFPS(60)
 	defer rl.CloseWindow()
 
+	// Setup draws into the canvas buffer: size() creates it (and starts a texture
+	// session); if setup never calls size(), fall back to a default-size canvas.
 	if user_setup != nil { user_setup() }
+	if !_rt_ready { _make_canvas(DEFAULT_W, DEFAULT_H) }
+	if _rt_active { rl.EndTextureMode(); _rt_active = false }
+	defer rl.UnloadRenderTexture(_canvas_rt)
 
-	// Canvas (= export) size from size(); the window is a fit-to-screen preview,
-	// so large print canvases scale down on screen but export at full resolution.
-	cw := _size_dirty ? _pending_w : DEFAULT_W
-	ch := _size_dirty ? _pending_h : DEFAULT_H
-	_size_dirty = false
-	width, height = cw, ch
+	cw, ch := width, height
 
+	// The window is a fit-to-screen preview; large print canvases scale down on
+	// screen but export at full resolution.
 	mon := rl.GetCurrentMonitor()
-	max_w := int(f32(rl.GetMonitorWidth(mon)) * 0.9)
-	max_h := int(f32(rl.GetMonitorHeight(mon)) * 0.85)
-	dw, dh := _fit(cw, ch, max_w, max_h)
+	dw, dh := _fit(cw, ch, int(f32(rl.GetMonitorWidth(mon))*0.9), int(f32(rl.GetMonitorHeight(mon))*0.85))
 	rl.SetWindowSize(i32(dw), i32(dh))
 	rl.SetWindowPosition((rl.GetMonitorWidth(mon)-i32(dw))/2, (rl.GetMonitorHeight(mon)-i32(dh))/2)
-
-	_canvas_rt = rl.LoadRenderTexture(i32(cw), i32(ch))
-	defer rl.UnloadRenderTexture(_canvas_rt)
-	rl.BeginTextureMode(_canvas_rt)
-	rl.ClearBackground(rl.Color{18, 18, 22, 255})
-	rl.EndTextureMode()
 
 	frame := 0
 	for !rl.WindowShouldClose() {
@@ -126,9 +132,9 @@ run :: proc(user_setup: proc(), user_draw: proc()) {
 		}
 
 		// draw into the persistent buffer (no auto-clear -> accumulation)
-		rl.BeginTextureMode(_canvas_rt)
+		rl.BeginTextureMode(_canvas_rt); _rt_active = true
 		if user_draw != nil { user_draw() }
-		rl.EndTextureMode()
+		rl.EndTextureMode(); _rt_active = false
 
 		// blit the buffer to the window (render textures are y-flipped)
 		rl.BeginDrawing()
@@ -154,11 +160,15 @@ run :: proc(user_setup: proc(), user_draw: proc()) {
 // Export the current canvas to a PNG (output/export-NNN.png) at full resolution.
 // Bound to Ctrl+S in the sketch window; also callable from a sketch.
 save_frame :: proc() {
-	if err := os.make_directory("output"); err != nil { /* likely exists; fine */ }
+	_ = os.make_directory("output") // ignore "already exists"; a real failure surfaces below
 	img := rl.LoadImageFromTexture(_canvas_rt.texture)
 	defer rl.UnloadImage(img)
 	rl.ImageFlipVertical(&img) // render textures are stored y-flipped
 	name := fmt.tprintf("output/export-%03d.png", _save_count)
-	_save_count += 1
-	rl.ExportImage(img, strings.clone_to_cstring(name, context.temp_allocator))
+	if rl.ExportImage(img, strings.clone_to_cstring(name, context.temp_allocator)) {
+		fmt.printfln("saved %s", name)
+		_save_count += 1
+	} else {
+		fmt.eprintfln("save_frame: failed to export %s", name)
+	}
 }

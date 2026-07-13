@@ -38,6 +38,7 @@ g_ac_start:         int
 g_ac_dismissed:     bool
 g_ac_dismiss_line:  int
 g_ac_dismiss_start: int
+g_ac_prefix:        [dynamic]u8 // last prefix, to detect changes and reset selection
 
 // Recompute the completion popup from the buffer's current `c.<prefix>` context.
 ac_update :: proc(b: ^editor.Buffer) {
@@ -52,6 +53,13 @@ ac_update :: proc(b: ^editor.Buffer) {
 		return // user pressed Esc for this exact spot
 	}
 	g_ac_dismissed = false
+
+	// reset the highlight to the top whenever the typed prefix changes
+	if string(g_ac_prefix[:]) != prefix {
+		clear(&g_ac_prefix)
+		append(&g_ac_prefix, ..transmute([]u8)prefix)
+		g_ac_sel = 0
+	}
 
 	clear(&g_ac_matches)
 	for name in CANVAS_API {

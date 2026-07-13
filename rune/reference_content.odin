@@ -74,6 +74,26 @@ draw_code_block :: proc(code: string, x, y, size: f32) -> f32 {
 	return yy
 }
 
+// Upper bound for the reference panel's vertical scroll, per tab.
+docs_max_scroll :: proc() -> int {
+	avail := int(screen_h()) - PANEL_TOP
+	switch g_ref_tab {
+	case .Canvas:
+		visible := max(1, (int(screen_h()) - DOCS_LIST_TOP) / DOCS_ROW)
+		return max(0, len(g_docs_filtered) - visible) * DOCS_ROW
+	case .Odin:
+		h := 22
+		for sec in CHEATSHEET {
+			nlines := strings.count(sec.code, "\n") + 1
+			h += 28 + int(f32(nlines)*17*1.45) + 20
+		}
+		return max(0, h - avail)
+	case .Shortcuts:
+		return max(0, len(SHORTCUTS)*42 + 48 - avail)
+	}
+	return 0
+}
+
 ref_tab_rect :: proc(i: int) -> rl.Rectangle {
 	return rl.Rectangle{DOCS_LIST_W*0 + f32(12 + i*118), f32(TOOLBAR_H) + 4, 110, REF_TAB_H - 8}
 }

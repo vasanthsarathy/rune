@@ -71,12 +71,22 @@ set_cursor :: proc(b: ^Buffer, line, col: int, select := false) {
 	if !select { b.sel = false }
 	else if !b.sel { b.sel = true; b.anchor = b.cursor }
 	b.cursor.line = clampi(line, 0, len(b.lines)-1)
-	b.cursor.col  = clampi(col, 0, len(b.lines[b.cursor.line]))
+	b.cursor.col  = _snap_rune(b.lines[b.cursor.line][:], clampi(col, 0, len(b.lines[b.cursor.line])))
 }
 
 // --- editing ---
 
+@(private) _is_cont :: proc(x: u8) -> bool { return (x & 0xC0) == 0x80 } // UTF-8 continuation byte
+
+// Snap a byte column to the start of the rune it falls inside.
+@(private) _snap_rune :: proc(line: []u8, col: int) -> int {
+	c := col
+	for c > 0 && c < len(line) && _is_cont(line[c]) { c -= 1 }
+	return c
+}
+
 @(private) insert_byte_raw :: proc(b: ^Buffer, c: u8) {
+	if c == '\r' { return } // normalize CRLF -> LF (drop carriage returns on insert/paste)
 	if c == '\n' {
 		line := &b.lines[b.cursor.line]
 		tail := make_line(line[b.cursor.col:])
@@ -121,8 +131,12 @@ insert_rune :: proc(b: ^Buffer, r: rune) {
 backspace :: proc(b: ^Buffer) {
 	if b.sel { delete_selection(b); return }
 	if b.cursor.col > 0 {
-		ordered_remove(&b.lines[b.cursor.line], b.cursor.col-1)
-		b.cursor.col -= 1
+		// remove the whole UTF-8 rune before the cursor, not just one byte
+		line := &b.lines[b.cursor.line]
+		start := b.cursor.col - 1
+		for start > 0 && _is_cont(line[start]) { start -= 1 }
+		remove_range(line, start, b.cursor.col)
+		b.cursor.col = start
 	} else if b.cursor.line > 0 {
 		prev := &b.lines[b.cursor.line-1]
 		plen := len(prev)
@@ -138,7 +152,10 @@ delete_forward :: proc(b: ^Buffer) {
 	if b.sel { delete_selection(b); return }
 	line := &b.lines[b.cursor.line]
 	if b.cursor.col < len(line) {
-		ordered_remove(line, b.cursor.col)
+		// remove the whole UTF-8 rune at the cursor
+		end := b.cursor.col + 1
+		for end < len(line) && _is_cont(line[end]) { end += 1 }
+		remove_range(line, b.cursor.col, end)
 	} else if b.cursor.line < len(b.lines)-1 {
 		next := b.lines[b.cursor.line+1]
 		append(line, ..next[:])
@@ -155,15 +172,21 @@ move :: proc(b: ^Buffer, dir: Move, select := false) {
 
 	switch dir {
 	case .Left:
-		if b.cursor.col > 0 { b.cursor.col -= 1 }
-		else if b.cursor.line > 0 { b.cursor.line -= 1; b.cursor.col = len(b.lines[b.cursor.line]) }
+		if b.cursor.col > 0 {
+			line := b.lines[b.cursor.line][:]
+			b.cursor.col -= 1
+			for b.cursor.col > 0 && _is_cont(line[b.cursor.col]) { b.cursor.col -= 1 } // to rune start
+		} else if b.cursor.line > 0 { b.cursor.line -= 1; b.cursor.col = len(b.lines[b.cursor.line]) }
 	case .Right:
-		if b.cursor.col < len(b.lines[b.cursor.line]) { b.cursor.col += 1 }
-		else if b.cursor.line < len(b.lines)-1 { b.cursor.line += 1; b.cursor.col = 0 }
+		line := b.lines[b.cursor.line][:]
+		if b.cursor.col < len(line) {
+			b.cursor.col += 1
+			for b.cursor.col < len(line) && _is_cont(line[b.cursor.col]) { b.cursor.col += 1 } // past the rune
+		} else if b.cursor.line < len(b.lines)-1 { b.cursor.line += 1; b.cursor.col = 0 }
 	case .Up:
-		if b.cursor.line > 0 { b.cursor.line -= 1; b.cursor.col = clampi(b.cursor.col, 0, len(b.lines[b.cursor.line])) }
+		if b.cursor.line > 0 { b.cursor.line -= 1; b.cursor.col = _snap_rune(b.lines[b.cursor.line][:], clampi(b.cursor.col, 0, len(b.lines[b.cursor.line]))) }
 	case .Down:
-		if b.cursor.line < len(b.lines)-1 { b.cursor.line += 1; b.cursor.col = clampi(b.cursor.col, 0, len(b.lines[b.cursor.line])) }
+		if b.cursor.line < len(b.lines)-1 { b.cursor.line += 1; b.cursor.col = _snap_rune(b.lines[b.cursor.line][:], clampi(b.cursor.col, 0, len(b.lines[b.cursor.line]))) }
 	case .Home:
 		b.cursor.col = 0
 	case .End:
@@ -221,8 +244,14 @@ delete_selection :: proc(b: ^Buffer) {
 
 // --- undo / redo (snapshot-based) ---
 
+UNDO_CAP :: 512 // bound memory: drop the oldest snapshots past this
+
 push_undo :: proc(b: ^Buffer) {
 	append(&b.undo, Snapshot{ text = to_string(b), cursor = b.cursor })
+	for len(b.undo) > UNDO_CAP {
+		delete(b.undo[0].text)
+		ordered_remove(&b.undo, 0)
+	}
 	for s in b.redo { delete(s.text) }
 	clear(&b.redo)
 }
