@@ -1,4 +1,5 @@
 # Odin build artifacts
+build/
 *.exe
 *.dll
 *.lib
@@ -7,6 +8,8 @@
 *.obj
 *.o
 *.bin
+*.zip
+*.tar.gz
 
 # Sketch output
 **/output/
