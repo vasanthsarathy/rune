@@ -40,10 +40,11 @@ jobs:
           sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev \
             libxinerama-dev libxi-dev libgl1-mesa-dev libglu1-mesa-dev
 
+      # Installs the latest Odin nightly by default (what Rune tracks). Pin the
+      # action's `release:` input here for a reproducible release build.
       - name: Install Odin
         uses: laytan/setup-odin@v2
         with:
-          nightly: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build IDE (release)

@@ -28,12 +28,12 @@ jobs:
           sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev \
             libxinerama-dev libxi-dev libgl1-mesa-dev libglu1-mesa-dev
 
-      # NOTE: Rune tracks Odin nightlies. If the action's nightly lacks a feature
-      # this project uses, pin `release:` to a specific dev-YYYY-MM tag here.
+      # setup-odin@v2 installs the latest Odin nightly by default — which is what
+      # Rune tracks. For a reproducible build, pin a specific version with the
+      # action's `release:` input (see https://github.com/laytan/setup-odin).
       - name: Install Odin
         uses: laytan/setup-odin@v2
         with:
-          nightly: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Version
