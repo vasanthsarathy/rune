@@ -50,10 +50,18 @@ measure :: proc(s: cstring, size: f32) -> f32 {
 	return rl.MeasureTextEx(g_font, s, size, TEXT_SPACING).x
 }
 
-SKETCH_NAME :: "hello"
-SKETCH_DIR  :: "sketches/hello"
-SKETCH_EXE  :: "build/hello.exe"
-SKETCH_FILE :: "sketches/hello/hello.odin"
+SKETCHES_ROOT :: "sketches"
+
+// Paths for a sketch by name (temp-allocated; used transiently per build/load).
+sketch_dir  :: proc(name: string) -> string { return strings.concatenate({SKETCHES_ROOT, "/", name}, context.temp_allocator) }
+sketch_file :: proc(name: string) -> string { return strings.concatenate({SKETCHES_ROOT, "/", name, "/", name, ".odin"}, context.temp_allocator) }
+sketch_exe  :: proc(name: string) -> string { return strings.concatenate({"build/", name, ".exe"}, context.temp_allocator) }
+
+// Name of the currently-open sketch.
+current_name :: proc(app: ^App) -> string {
+	if app.current >= 0 && app.current < len(app.sketches) { return app.sketches[app.current] }
+	return "hello"
+}
 
 RUN_RECT  :: rl.Rectangle{8, 8, 90, 32}
 STOP_RECT :: rl.Rectangle{106, 8, 90, 32}
@@ -68,27 +76,43 @@ App :: struct {
 	console_scroll: int,      // first visible line index
 	buf:            editor.Buffer, // the sketch source being edited
 	ed_scroll:      int,           // editor's first visible line
+	sketches:       [dynamic]string, // sketch names found under sketches/
+	current:        int,             // index into sketches (the open one)
 }
 
-TOOLBAR_H :: 48
-CONSOLE_H :: 160
-LINE_H    :: 20
-FONT_SIZE :: 18
+TOOLBAR_H  :: 48
+SIDEBAR_W  :: 150
+SKETCH_ROW :: 28
+CONSOLE_H  :: 160
+LINE_H     :: 20
+FONT_SIZE  :: 18
 
 // Number of console lines that fit in the bottom strip.
 console_visible_lines :: proc() -> int {
 	return CONSOLE_H / LINE_H
 }
 
-// Editor area: below the toolbar, above the console strip.
+// Editor area: right of the sidebar, below the toolbar, above the console strip.
 editor_area :: proc() -> rl.Rectangle {
 	h := int(rl.GetScreenHeight()) - TOOLBAR_H - CONSOLE_H
 	if h < 0 { h = 0 }
-	return rl.Rectangle{0, TOOLBAR_H, f32(rl.GetScreenWidth()), f32(h)}
+	return rl.Rectangle{SIDEBAR_W, TOOLBAR_H, f32(int(rl.GetScreenWidth()) - SIDEBAR_W), f32(h)}
+}
+
+// Populate app.sketches from the subdirectories of sketches/.
+list_sketches :: proc(app: ^App) {
+	clear(&app.sketches)
+	fis, err := os.read_all_directory_by_path(SKETCHES_ROOT, context.allocator)
+	if err != nil { return }
+	for f in fis {
+		if f.type == .Directory {
+			append(&app.sketches, strings.clone(f.name))
+		}
+	}
 }
 
 load_sketch :: proc(app: ^App) {
-	data, err := os.read_entire_file_from_path(SKETCH_FILE, context.allocator)
+	data, err := os.read_entire_file_from_path(sketch_file(current_name(app)), context.allocator)
 	if err != nil {
 		app.buf = editor.make_buffer("")
 		return
@@ -99,7 +123,17 @@ load_sketch :: proc(app: ^App) {
 
 save_sketch :: proc(app: ^App) {
 	s := editor.to_string(&app.buf, context.temp_allocator)
-	_ = os.write_entire_file(SKETCH_FILE, transmute([]u8)s)
+	_ = os.write_entire_file(sketch_file(current_name(app)), transmute([]u8)s)
+}
+
+// Switch the open sketch: persist current edits, then load the chosen one.
+open_sketch :: proc(app: ^App, idx: int) {
+	if idx < 0 || idx >= len(app.sketches) || idx == app.current { return }
+	save_sketch(app)
+	editor.destroy_buffer(&app.buf)
+	app.current = idx
+	app.ed_scroll = 0
+	load_sketch(app)
 }
 
 status_text :: proc(s: Status) -> cstring {
@@ -149,7 +183,8 @@ do_run :: proc(app: ^App) {
 		app.console = ""
 	}
 	app.console_scroll = 0
-	res := runner.build(SKETCH_DIR, SKETCH_EXE)
+	name := current_name(app)
+	res := runner.build(sketch_dir(name), sketch_exe(name))
 	app.console = res.output
 	// Split once per build (not per frame). split_lines yields a phantom trailing
 	// "" when the output ends in '\n' — drop it.
@@ -161,7 +196,7 @@ do_run :: proc(app: ^App) {
 		app.status = .Compile_Error
 		return
 	}
-	app.status = runner.launch(&app.run, SKETCH_EXE) ? .Running : .Idle
+	app.status = runner.launch(&app.run, sketch_exe(current_name(app))) ? .Running : .Idle
 }
 
 do_stop :: proc(app: ^App) {
@@ -194,13 +229,47 @@ draw_console_strip :: proc(app: ^App, top_y: int) {
 	}
 }
 
+// Screen rect of the sketch list entry at index i.
+sketch_row_rect :: proc(i: int) -> rl.Rectangle {
+	return rl.Rectangle{0, f32(TOOLBAR_H + i*SKETCH_ROW), SIDEBAR_W, SKETCH_ROW}
+}
+
+draw_sidebar :: proc(app: ^App) {
+	sh := rl.GetScreenHeight()
+	rl.DrawRectangle(0, TOOLBAR_H, SIDEBAR_W, sh-TOOLBAR_H, rl.Color{28, 28, 34, 255})
+	mouse := rl.GetMousePosition()
+	for name, i in app.sketches {
+		r := sketch_row_rect(i)
+		bg := rl.Color{28, 28, 34, 255}
+		if i == app.current             { bg = rl.Color{54, 60, 82, 255} }
+		else if rl.CheckCollisionPointRec(mouse, r) { bg = rl.Color{40, 40, 48, 255} }
+		rl.DrawRectangleRec(r, bg)
+		fg := i == app.current ? rl.Color{235, 235, 240, 255} : rl.Color{170, 170, 180, 255}
+		draw_text(strings.clone_to_cstring(name, context.temp_allocator), 10, r.y+5, 17, fg)
+	}
+	rl.DrawRectangle(SIDEBAR_W-1, TOOLBAR_H, 1, sh-TOOLBAR_H, rl.Color{50, 50, 58, 255})
+}
+
+// Handle a click on the sketch list; returns true if a switch happened.
+sidebar_click :: proc(app: ^App) {
+	if !rl.IsMouseButtonPressed(.LEFT) { return }
+	m := rl.GetMousePosition()
+	for _, i in app.sketches {
+		if rl.CheckCollisionPointRec(m, sketch_row_rect(i)) {
+			open_sketch(app, i)
+			return
+		}
+	}
+}
+
 draw_ui :: proc(app: ^App) {
 	rl.ClearBackground(rl.Color{24, 24, 28, 255})
 
-	// editor (between toolbar and console strip)
+	// editor (right of sidebar, between toolbar and console strip)
 	editor_draw(&app.buf, editor_area(), &app.ed_scroll)
 
-	// console strip at the bottom
+	// sidebar (sketch list) and console strip
+	draw_sidebar(app)
 	draw_console_strip(app, int(rl.GetScreenHeight()) - CONSOLE_H)
 
 	// toolbar on top
@@ -208,6 +277,7 @@ draw_ui :: proc(app: ^App) {
 	draw_button(RUN_RECT, "Run", app.status != .Running && app.status != .Compiling)
 	draw_button(STOP_RECT, "Stop", app.status == .Running)
 	draw_text(status_text(app.status), 210, 14, 20, rl.Color{200, 200, 210, 255})
+	draw_text(strings.clone_to_cstring(current_name(app), context.temp_allocator), 340, 14, 20, rl.Color{130, 160, 210, 255})
 }
 
 main :: proc() {
@@ -221,6 +291,18 @@ main :: proc() {
 
 	app: App
 	app.status = .Idle
+	list_sketches(&app)
+	// initial sketch: first positional arg (e.g. `odessa attractor`), else "hello"
+	app.current = 0
+	want := "hello"
+	for a in os.args[1:] {
+		if len(a) >= 2 && a[:2] == "--" { continue }
+		want = a
+		break
+	}
+	for name, i in app.sketches {
+		if name == want { app.current = i; break }
+	}
 	load_sketch(&app)
 	defer editor.destroy_buffer(&app.buf)
 
@@ -237,6 +319,9 @@ main :: proc() {
 		}
 
 		ctrl := rl.IsKeyDown(.LEFT_CONTROL) || rl.IsKeyDown(.RIGHT_CONTROL)
+
+		// sketch list clicks (switch the open sketch)
+		sidebar_click(&app)
 
 		// editor edits (typing goes here; Ctrl combos for run/save handled below)
 		prev_cursor := app.buf.cursor
