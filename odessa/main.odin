@@ -22,6 +22,12 @@ g_font:        rl.Font
 g_font_custom: bool
 
 load_ui_font :: proc() {
+	// Bake the glyph atlas at the display's physical pixel density so text stays
+	// crisp on high-DPI screens (glyphs are drawn from a higher-res atlas).
+	dpi := rl.GetWindowScaleDPI().x
+	if dpi < 1 { dpi = 1 }
+	base := i32(f32(FONT_BASE) * dpi)
+
 	candidates := []string{
 		"C:/Windows/Fonts/consola.ttf",     // Consolas: narrow, light, very readable
 		"C:/Windows/Fonts/CascadiaMono.ttf",
@@ -29,7 +35,7 @@ load_ui_font :: proc() {
 	}
 	for path in candidates {
 		if os.exists(path) {
-			f := rl.LoadFontEx(strings.clone_to_cstring(path, context.temp_allocator), FONT_BASE, nil, 0)
+			f := rl.LoadFontEx(strings.clone_to_cstring(path, context.temp_allocator), base, nil, 0)
 			if f.glyphCount > 0 {
 				rl.SetTextureFilter(f.texture, .BILINEAR)
 				g_font = f
@@ -407,8 +413,8 @@ draw_ui :: proc(app: ^App) {
 }
 
 main :: proc() {
-	rl.SetConfigFlags({.WINDOW_RESIZABLE})
-	rl.InitWindow(900, 640, "Odessa")
+	rl.SetConfigFlags({.WINDOW_RESIZABLE, .WINDOW_HIGHDPI, .MSAA_4X_HINT})
+	rl.InitWindow(1100, 760, "Odessa")
 	rl.SetTargetFPS(60)
 	defer rl.CloseWindow()
 

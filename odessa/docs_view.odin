@@ -12,6 +12,7 @@ g_docs_filtered: [dynamic]int // indices into DOCS matching the search
 
 DOCS_LIST_W :: 240
 DOCS_ROW    :: 30
+DOCS_LIST_TOP :: TOOLBAR_H + 66 // below the REFERENCE label + search field
 
 @(private="file") ci_contains :: proc(hay, needle: string) -> bool {
 	if needle == "" { return true }
@@ -67,7 +68,7 @@ docs_open_at_cursor :: proc(b: ^editor.Buffer) {
 }
 
 docs_row_rect :: proc(i: int) -> rl.Rectangle {
-	return rl.Rectangle{0, f32(TOOLBAR_H + 44 + i*DOCS_ROW - g_docs_scroll), DOCS_LIST_W, DOCS_ROW}
+	return rl.Rectangle{0, f32(DOCS_LIST_TOP + i*DOCS_ROW - g_docs_scroll), DOCS_LIST_W, DOCS_ROW}
 }
 
 docs_input :: proc() {
@@ -142,11 +143,12 @@ docs_draw :: proc() {
 		draw_text(strings.clone_to_cstring(strings.concatenate({q, "_"}, context.temp_allocator), context.temp_allocator), sb.x+8, sb.y+4, 16, FG)
 	}
 
-	// list
-	rl.BeginScissorMode(0, i32(top)+44, DOCS_LIST_W, i32(sh-top)-44)
+	// list (clipped below the search field)
+	list_top := f32(DOCS_LIST_TOP)
+	rl.BeginScissorMode(0, i32(list_top), DOCS_LIST_W, i32(sh-list_top))
 	for fi, k in g_docs_filtered {
 		r := docs_row_rect(k)
-		if r.y+r.height < top+44 || r.y > sh { continue }
+		if r.y+r.height < list_top || r.y > sh { continue }
 		if k == g_docs_sel {
 			rl.DrawRectangleRec(r, BG_SEL)
 			rl.DrawRectangle(0, i32(r.y), 3, i32(r.height), ACCENT)
