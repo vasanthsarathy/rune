@@ -80,9 +80,9 @@ current_name :: proc(app: ^App) -> string {
 	return "hello"
 }
 
-RUN_RECT  :: rl.Rectangle{8, 8, 90, 32}
-STOP_RECT :: rl.Rectangle{106, 8, 90, 32}
-DOCS_RECT :: rl.Rectangle{204, 8, 76, 32}
+RUN_RECT  :: rl.Rectangle{46, 8, 90, 32}
+STOP_RECT :: rl.Rectangle{144, 8, 90, 32}
+DOCS_RECT :: rl.Rectangle{242, 8, 76, 32}
 
 // Toggle the docs panel (jumps to the symbol under the cursor when opening).
 docs_toggle :: proc(app: ^App) {
@@ -408,12 +408,13 @@ draw_ui :: proc(app: ^App) {
 	// toolbar
 	rl.DrawRectangle(0, 0, screen_w(), TOOLBAR_H, BG_RAISE)
 	rl.DrawRectangle(0, TOOLBAR_H-1, screen_w(), 1, LINE) // hairline
+	draw_logo(24, 24, 13, 2.5, ACCENT) // the Rune mark
 	draw_button(RUN_RECT, "Run", app.status != .Running && app.status != .Compiling, primary = true)
 	draw_button(STOP_RECT, "Stop", app.status == .Running)
 	draw_button(DOCS_RECT, g_docs_open ? "Editor" : "Docs", true)
 
 	// current sketch name (accent) — the throughline tying chrome to the art
-	draw_text(strings.clone_to_cstring(current_name(app), context.temp_allocator), 296, 15, 20, ACCENT)
+	draw_text(strings.clone_to_cstring(current_name(app), context.temp_allocator), 334, 15, 20, ACCENT)
 
 
 	// status: a dot + label, right-aligned
@@ -432,6 +433,7 @@ main :: proc() {
 
 	load_ui_font()
 	defer if g_font_custom { rl.UnloadFont(g_font) }
+	set_window_icon()
 
 	app: App
 	app.status = .Idle
