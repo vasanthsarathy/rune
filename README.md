@@ -85,9 +85,17 @@ main :: proc() {
 
 ## Get started
 
-### Download (Windows)
+### Download
 
-Grab the latest `rune-windows.zip` from the [**Releases**](../../releases) page, unzip, and run `rune.exe`. You'll need [Odin](https://odin-lang.org/docs/install/) on your `PATH` (Rune compiles your sketches with it).
+Grab a build for your platform from the latest release, unpack it, and run the `rune` binary. Keep it next to the bundled `canvas/` and `sketches/` folders.
+
+| Platform | Download |
+| --- | --- |
+| Windows (x64) | [`rune-windows-x64.zip`](../../releases/latest/download/rune-windows-x64.zip) |
+| macOS (Apple Silicon) | [`rune-macos-arm64.zip`](../../releases/latest/download/rune-macos-arm64.zip) |
+| Linux (x64) | [`rune-linux-x64.tar.gz`](../../releases/latest/download/rune-linux-x64.tar.gz) |
+
+You'll need [Odin](https://odin-lang.org/docs/install/) on your `PATH` (Rune compiles your sketches with it). The builds are unsigned; on macOS clear the quarantine flag once with `xattr -dr com.apple.quarantine rune`. On an Intel Mac, build from source (below).
 
 ### Build from source (Windows / Linux / macOS)
 

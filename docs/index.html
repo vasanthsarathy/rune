@@ -116,9 +116,11 @@
   <p class="tag">Creative coding in <b>Odin</b> — native speed, Processing-simple.</p>
   <p class="sub">A self-contained studio for generative art: a built-in code editor, a Processing-style <code>canvas</code> library, and one-key compile-and-run. For the heavy stuff Processing and p5 can't keep up with.</p>
   <div class="cta">
-    <a class="btn btn-accent" href="https://github.com/vasanthsarathy/rune/releases/latest">Download for Windows</a>
-    <a class="btn btn-ghost" href="https://github.com/vasanthsarathy/rune">View source</a>
+    <a class="btn btn-accent" href="https://github.com/vasanthsarathy/rune/releases/latest/download/rune-windows-x64.zip">Download for Windows</a>
+    <a class="btn btn-ghost" href="https://github.com/vasanthsarathy/rune/releases/latest/download/rune-macos-arm64.zip">macOS (Apple Silicon)</a>
+    <a class="btn btn-ghost" href="https://github.com/vasanthsarathy/rune/releases/latest/download/rune-linux-x64.tar.gz">Linux</a>
   </div>
+  <p class="sub" style="margin-top:14px;font-size:.9rem">Unsigned builds. <a href="https://github.com/vasanthsarathy/rune/releases/latest">Release notes</a> · <a href="https://github.com/vasanthsarathy/rune">View source</a></p>
   <div class="shotwrap"><img class="shot" src="img/editor.png" alt="The Rune editor" /></div>
 </div></header>
 
@@ -186,9 +188,13 @@ draw :: <span class="kw">proc</span>() {
   <p class="lead">Rune compiles your sketches with the <a href="https://odin-lang.org/docs/install/">Odin compiler</a> (which bundles raylib), so you'll need Odin on your <code>PATH</code>.</p>
   <div class="steps">
     <div class="step">
-      <h3>Download (Windows)</h3>
-      <p class="note">Grab the latest release, unzip, and run <code>rune.exe</code> — keep it next to the bundled <code>canvas/</code> and <code>sketches/</code>.</p>
-      <p style="margin-top:14px"><a class="btn btn-accent" href="https://github.com/vasanthsarathy/rune/releases/latest">Download v0.1.0</a></p>
+      <h3>Download a build</h3>
+      <p class="note">Grab your platform, unpack it, and run the <code>rune</code> binary — keep it next to the bundled <code>canvas/</code> and <code>sketches/</code>. On macOS, clear the quarantine flag once: <code>xattr -dr com.apple.quarantine rune</code>.</p>
+      <p style="margin-top:14px">
+        <a class="btn btn-accent" href="https://github.com/vasanthsarathy/rune/releases/latest/download/rune-windows-x64.zip">Windows</a>
+        <a class="btn btn-ghost" href="https://github.com/vasanthsarathy/rune/releases/latest/download/rune-macos-arm64.zip">macOS</a>
+        <a class="btn btn-ghost" href="https://github.com/vasanthsarathy/rune/releases/latest/download/rune-linux-x64.tar.gz">Linux</a>
+      </p>
     </div>
     <div class="step">
       <h3>Build from source (any OS)</h3>

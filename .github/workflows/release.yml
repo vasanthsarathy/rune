@@ -1,0 +1,86 @@
+name: Release
+
+# Cut a release by pushing a version tag:  git tag v0.1.1 && git push origin v0.1.1
+# This builds a binary on each platform, bundles it with the canvas library and
+# example sketches, and attaches the archives to the GitHub release for the tag.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: package (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-x64
+            ext: ".exe"
+            asset: rune-windows-x64.zip
+          - os: ubuntu-latest
+            platform: linux-x64
+            ext: ""
+            asset: rune-linux-x64.tar.gz
+          - os: macos-latest
+            platform: macos-arm64
+            ext: ""
+            asset: rune-macos-arm64.zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux graphics deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev \
+            libxinerama-dev libxi-dev libgl1-mesa-dev libglu1-mesa-dev
+
+      - name: Install Odin
+        uses: laytan/setup-odin@v2
+        with:
+          nightly: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build IDE (release)
+        shell: bash
+        run: |
+          mkdir -p build
+          odin build rune -out:build/rune${{ matrix.ext }} -o:speed
+
+      - name: Stage package
+        shell: bash
+        run: |
+          STAGE=dist/rune
+          mkdir -p "$STAGE/sketches"
+          cp "build/rune${{ matrix.ext }}" "$STAGE/"
+          cp -r canvas "$STAGE/"
+          cp -r sketches/hello sketches/attractor "$STAGE/sketches/"
+          cp LICENSE "$STAGE/"
+          cp packaging/QUICKSTART.txt "$STAGE/"
+
+      - name: Archive (zip, Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/rune -DestinationPath ${{ matrix.asset }}
+
+      - name: Archive (zip, macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: cd dist && zip -r "../${{ matrix.asset }}" rune
+
+      - name: Archive (tar.gz, Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: tar -czf "${{ matrix.asset }}" -C dist rune
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true

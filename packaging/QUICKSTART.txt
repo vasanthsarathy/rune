@@ -1,0 +1,23 @@
+Rune — Quickstart
+=================
+
+Creative coding in Odin. https://github.com/vasanthsarathy/rune
+
+1. Install the Odin compiler (it bundles raylib) and put `odin` on your PATH:
+   https://odin-lang.org/docs/install/
+   Rune shells out to `odin` to compile your sketches, so this is required.
+
+2. Launch Rune. Keep the binary next to the bundled `canvas/` and `sketches/`
+   folders — sketches import the canvas library by relative path.
+
+     Windows   double-click rune.exe
+     Linux     ./rune
+     macOS     ./rune
+               First launch is blocked because the build is unsigned. Clear
+               the quarantine flag once:  xattr -dr com.apple.quarantine rune
+
+3. Click a sketch in the sidebar, edit it, and press Ctrl+R to run it in its
+   own window. Press F1 for the built-in API reference, Odin cheatsheet, and
+   keyboard shortcuts.
+
+Full docs and source: https://github.com/vasanthsarathy/rune
