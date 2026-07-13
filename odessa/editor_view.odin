@@ -59,8 +59,38 @@ editor_input :: proc(b: ^editor.Buffer) {
 	if key_go(.END)       { editor.move(b, .End,   shift) }
 }
 
-@(private="file") char_w :: proc() -> f32 {
-	return f32(rl.MeasureText("m", ED_FONT))
+// Pixel width of the first `col` bytes of a line, using raylib's own text
+// layout so cursor/selection/tokens line up exactly with DrawText (works for
+// any font, monospace or not).
+@(private="file") prefix_w :: proc(line: []u8, col: int) -> f32 {
+	c := clamp(col, 0, len(line))
+	if c == 0 { return 0 }
+	cs := strings.clone_to_cstring(string(line[:c]), context.temp_allocator)
+	return f32(rl.MeasureText(cs, ED_FONT))
+}
+
+// Inverse of prefix_w: the column whose left edge is nearest to x pixels.
+@(private="file") col_at_x :: proc(line: []u8, x: f32) -> int {
+	if x <= 0 { return 0 }
+	for col in 1..=len(line) {
+		wr := prefix_w(line, col)
+		if wr >= x {
+			wl := prefix_w(line, col-1)
+			return col-1 if (x - wl) < (wr - x) else col
+		}
+	}
+	return len(line)
+}
+
+token_color :: proc(k: editor.Token_Kind) -> rl.Color {
+	switch k {
+	case .Keyword: return rl.Color{198, 120, 221, 255} // purple
+	case .Number:  return rl.Color{209, 154, 102, 255} // orange
+	case .String:  return rl.Color{152, 195, 121, 255} // green
+	case .Char:    return rl.Color{152, 195, 121, 255} // green
+	case .Comment: return rl.Color{106, 115, 125, 255} // gray
+	}
+	return rl.Color{220, 220, 225, 255}
 }
 
 // Set the cursor from a mouse click inside the editor area.
@@ -69,12 +99,22 @@ editor_mouse :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: int) {
 	m := rl.GetMousePosition()
 	if !rl.CheckCollisionPointRec(m, area) { return }
 	line := scroll + int((m.y - area.y) / ED_LINE_H)
-	col  := int((m.x - area.x - GUTTER_W) / char_w() + 0.5)
+	line = clamp(line, 0, len(b.lines)-1)
+	col  := col_at_x(b.lines[line][:], m.x - area.x - GUTTER_W)
 	editor.set_cursor(b, line, col) // set_cursor clamps
 }
 
+BASE_COL :: rl.Color{220, 220, 225, 255}
+
+// Draw one byte-span of a line at column `col` in `col_color`, returning the
+// end column drawn to. Uses measured widths so it lines up with everything else.
+@(private="file") draw_span :: proc(line: []u8, lo, hi: int, base_x, y: f32, color: rl.Color) {
+	if hi <= lo { return }
+	cs := strings.clone_to_cstring(string(line[lo:hi]), context.temp_allocator)
+	rl.DrawText(cs, i32(base_x + prefix_w(line, lo)), i32(y), ED_FONT, color)
+}
+
 editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
-	cw := char_w()
 	visible := int(area.height) / ED_LINE_H
 
 	// keep cursor visible
@@ -83,6 +123,8 @@ editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
 	if scroll^ < 0 { scroll^ = 0 }
 
 	rl.DrawRectangleRec(area, rl.Color{18, 18, 22, 255})
+	base_x := area.x + GUTTER_W
+	nib := f32(rl.MeasureText("m", ED_FONT)) // nominal width for the newline sliver
 
 	// selection highlight
 	if editor.has_selection(b) {
@@ -92,29 +134,38 @@ editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
 			if row < 0 || row >= visible { continue }
 			lo := 0 if ln > start.line else start.col
 			hi := len(b.lines[ln]) if ln < end.line else end.col
-			x := area.x + GUTTER_W + f32(lo)*cw
+			x0 := base_x + prefix_w(b.lines[ln][:], lo)
+			x1 := base_x + prefix_w(b.lines[ln][:], hi)
 			y := area.y + f32(row)*ED_LINE_H
-			w := f32(hi-lo)*cw
-			if ln < end.line { w += cw } // show the trailing newline as a sliver
-			rl.DrawRectangleRec(rl.Rectangle{x, y, w, ED_LINE_H}, rl.Color{50, 70, 120, 255})
+			w := x1 - x0
+			if ln < end.line { w += nib } // show the trailing newline as a sliver
+			rl.DrawRectangleRec(rl.Rectangle{x0, y, w, ED_LINE_H}, rl.Color{50, 70, 120, 255})
 		}
 	}
 
-	// lines + gutter
+	// lines: gutter number, then colored segments left-to-right
 	for row in 0..<visible {
 		ln := scroll^ + row
 		if ln >= len(b.lines) { break }
-		y := i32(area.y) + i32(row*ED_LINE_H)
+		y := area.y + f32(row*ED_LINE_H)
 		num := rl.TextFormat("%d", ln+1)
-		rl.DrawText(num, i32(area.x)+6, y, ED_FONT, rl.Color{90, 90, 110, 255})
-		ctext := strings.clone_to_cstring(string(b.lines[ln][:]), context.temp_allocator)
-		rl.DrawText(ctext, i32(area.x)+GUTTER_W, y, ED_FONT, rl.Color{220, 220, 225, 255})
+		rl.DrawText(num, i32(area.x)+6, i32(y), ED_FONT, rl.Color{90, 90, 110, 255})
+
+		line := b.lines[ln][:]
+		toks := editor.tokenize(line, context.temp_allocator)
+		prev := 0
+		for tok in toks {
+			draw_span(line, prev, tok.start, base_x, y, BASE_COL)          // untagged gap
+			draw_span(line, tok.start, tok.end, base_x, y, token_color(tok.kind))
+			prev = tok.end
+		}
+		draw_span(line, prev, len(line), base_x, y, BASE_COL)              // trailing gap
 	}
 
 	// cursor
 	crow := b.cursor.line - scroll^
 	if crow >= 0 && crow < visible {
-		cx := area.x + GUTTER_W + f32(b.cursor.col)*cw
+		cx := base_x + prefix_w(b.lines[b.cursor.line][:], b.cursor.col)
 		cy := area.y + f32(crow)*ED_LINE_H
 		rl.DrawRectangleRec(rl.Rectangle{cx, cy, 2, ED_LINE_H}, rl.Color{240, 240, 120, 255})
 	}
