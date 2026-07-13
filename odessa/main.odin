@@ -6,6 +6,17 @@ import "core:strings"
 import "../runner"
 import "../editor"
 
+// Logical (DPI-independent) drawable size. raylib's GetScreenWidth/Height are
+// unreliable under WINDOW_HIGHDPI after a resize (they flip to physical), but
+// GetRenderWidth/Height stay consistently physical — so derive logical size
+// from render size / DPI. All layout uses these.
+ui_scale :: proc() -> f32 {
+	s := rl.GetWindowScaleDPI().x
+	return s < 1 ? 1 : s
+}
+screen_w :: proc() -> i32 { return i32(f32(rl.GetRenderWidth()) / ui_scale()) }
+screen_h :: proc() -> i32 { return i32(f32(rl.GetRenderHeight()) / ui_scale()) }
+
 // True if the given flag was passed on the command line.
 has_arg :: proc(name: string) -> bool {
 	for a in os.args[1:] {
@@ -125,9 +136,9 @@ console_visible_lines :: proc() -> int {
 
 // Editor area: right of the sidebar, below the toolbar, above the console strip.
 editor_area :: proc() -> rl.Rectangle {
-	h := int(rl.GetScreenHeight()) - TOOLBAR_H - CONSOLE_H
+	h := int(screen_h()) - TOOLBAR_H - CONSOLE_H
 	if h < 0 { h = 0 }
-	return rl.Rectangle{SIDEBAR_W, TOOLBAR_H, f32(int(rl.GetScreenWidth()) - SIDEBAR_W), f32(h)}
+	return rl.Rectangle{SIDEBAR_W, TOOLBAR_H, f32(int(screen_w()) - SIDEBAR_W), f32(h)}
 }
 
 // Populate app.sketches from the subdirectories of sketches/.
@@ -285,10 +296,10 @@ CONSOLE_PAD :: 22 // room for the CONSOLE eyebrow label
 
 draw_console_strip :: proc(app: ^App, top_y: int) {
 	top := i32(top_y)
-	bottom := rl.GetScreenHeight()
+	bottom := screen_h()
 	if bottom <= top { return }
-	rl.DrawRectangle(0, top, rl.GetScreenWidth(), bottom-top, BG_PANEL)
-	rl.DrawRectangle(0, top, rl.GetScreenWidth(), 1, LINE) // hairline divider
+	rl.DrawRectangle(0, top, screen_w(), bottom-top, BG_PANEL)
+	rl.DrawRectangle(0, top, screen_w(), 1, LINE) // hairline divider
 	draw_eyebrow("CONSOLE", 12, f32(top)+6)
 
 	if len(app.console_lines) == 0 {
@@ -318,7 +329,7 @@ sketch_row_rect :: proc(i: int) -> rl.Rectangle {
 }
 
 draw_sidebar :: proc(app: ^App) {
-	sh := rl.GetScreenHeight()
+	sh := screen_h()
 	rl.DrawRectangle(0, TOOLBAR_H, SIDEBAR_W, sh-TOOLBAR_H, BG_PANEL)
 	mouse := rl.GetMousePosition()
 
@@ -389,14 +400,14 @@ draw_ui :: proc(app: ^App) {
 
 	// sidebar (sketch list) and console strip
 	draw_sidebar(app)
-	draw_console_strip(app, int(rl.GetScreenHeight()) - CONSOLE_H)
+	draw_console_strip(app, int(screen_h()) - CONSOLE_H)
 
 	// docs panel overlays the workspace when open
 	if g_docs_open { docs_draw() }
 
 	// toolbar
-	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), TOOLBAR_H, BG_RAISE)
-	rl.DrawRectangle(0, TOOLBAR_H-1, rl.GetScreenWidth(), 1, LINE) // hairline
+	rl.DrawRectangle(0, 0, screen_w(), TOOLBAR_H, BG_RAISE)
+	rl.DrawRectangle(0, TOOLBAR_H-1, screen_w(), 1, LINE) // hairline
 	draw_button(RUN_RECT, "Run", app.status != .Running && app.status != .Compiling, primary = true)
 	draw_button(STOP_RECT, "Stop", app.status == .Running)
 	draw_button(DOCS_RECT, g_docs_open ? "Editor" : "Docs", true)
@@ -404,10 +415,11 @@ draw_ui :: proc(app: ^App) {
 	// current sketch name (accent) — the throughline tying chrome to the art
 	draw_text(strings.clone_to_cstring(current_name(app), context.temp_allocator), 296, 15, 20, ACCENT)
 
+
 	// status: a dot + label, right-aligned
 	label := status_text(app.status)
 	lw := measure(label, 16)
-	sx := f32(rl.GetScreenWidth()) - lw - 20
+	sx := f32(screen_w()) - lw - 20
 	rl.DrawCircle(i32(sx)-12, 24, 4, status_dot(app.status))
 	draw_text(label, sx, 16, 16, FG_DIM)
 }
