@@ -99,6 +99,17 @@ current_file_name :: proc(app: ^App) -> string {
 }
 current_file_path :: proc(app: ^App) -> string { return file_path(current_name(app), current_file_name(app)) }
 
+// Re-select the open file / sketch by name after a relist rebuilt the slice
+// (indices shift). Falls back to index 0 when the name is gone.
+select_file_by_name :: proc(app: ^App, name: string) {
+	app.current_file = 0
+	for f, i in app.files { if f == name { app.current_file = i; break } }
+}
+select_sketch_by_name :: proc(app: ^App, name: string) {
+	app.current = 0
+	for n, i in app.sketches { if n == name { app.current = i; break } }
+}
+
 RUN_RECT  :: rl.Rectangle{46, 8, 90, 32}
 STOP_RECT :: rl.Rectangle{144, 8, 90, 32}
 DOCS_RECT :: rl.Rectangle{242, 8, 76, 32}
@@ -212,10 +223,10 @@ load_file :: proc(app: ^App) {
 	app.buf = editor.make_buffer(string(data))
 }
 
-// Write the editor buffer to the current file. Returns whether it succeeded
-// (true when the sketch has no files — there is nothing to persist).
+// Write the editor buffer to the current file. Returns whether it succeeded.
+// For an empty sketch (no .odin files) current_file_path falls back to the main
+// file, so a first save materializes <name>.odin rather than being discarded.
 save_current_file :: proc(app: ^App) -> bool {
-	if len(app.files) == 0 { return true }
 	s := editor.to_string(&app.buf, context.temp_allocator)
 	return os.write_entire_file(current_file_path(app), transmute([]u8)s) == nil
 }
@@ -283,10 +294,7 @@ create_sketch :: proc(app: ^App) {
 	}
 	editor.destroy_buffer(&app.buf)
 	list_sketches(app)   // rescan so the new sketch appears
-	app.current = 0
-	for n, i in app.sketches {
-		if n == name { app.current = i; break }
-	}
+	select_sketch_by_name(app, name)
 	app.current_file = 0
 	app.ed_scroll = 0
 	list_files(app)
@@ -311,8 +319,7 @@ create_file :: proc(app: ^App) {
 	}
 	editor.destroy_buffer(&app.buf)
 	list_files(app)
-	app.current_file = 0
-	for f, i in app.files { if f == fname { app.current_file = i; break } }
+	select_file_by_name(app, fname)
 	app.ed_scroll = 0
 	load_file(app)
 }
@@ -342,8 +349,7 @@ rename_file :: proc(app: ^App, idx: int) {
 	}
 	if was_open { editor.destroy_buffer(&app.buf) }
 	list_files(app)
-	app.current_file = 0
-	for f, i in app.files { if f == open_name { app.current_file = i; break } }
+	select_file_by_name(app, open_name)
 	if was_open { load_file(app) }
 }
 
@@ -366,8 +372,7 @@ delete_file :: proc(app: ^App, idx: int) {
 		load_file(app)
 	} else {
 		list_files(app) // buffer untouched; just fix the open file's index
-		app.current_file = 0
-		for f, i in app.files { if f == open_name { app.current_file = i; break } }
+		select_file_by_name(app, open_name)
 	}
 }
 
@@ -567,15 +572,21 @@ confirm_rects :: proc(r: rl.Rectangle) -> (cancel, del: rl.Rectangle) {
 // Fit a filename into maxw pixels, middle-truncating with '~' while keeping the
 // ".odin" suffix visible.
 fit_name :: proc(name: string, maxw, size: f32) -> cstring {
-	c := strings.clone_to_cstring(name, context.temp_allocator)
-	if measure(c, size) <= maxw { return c }
+	full := strings.clone_to_cstring(name, context.temp_allocator)
+	if measure(full, size) <= maxw { return full }
 	stem := name; suffix := ""
 	if sketch.is_odin_file(name) { stem = name[:len(name)-5]; suffix = ".odin" }
-	for n := len(stem); n > 1; n -= 1 {
-		trial := strings.clone_to_cstring(strings.concatenate({stem[:n-1], "~", suffix}, context.temp_allocator), context.temp_allocator)
-		if measure(trial, size) <= maxw { return trial }
+	trunc :: proc(stem: string, k: int, suffix: string) -> cstring {
+		return strings.clone_to_cstring(strings.concatenate({stem[:k], "~", suffix}, context.temp_allocator), context.temp_allocator)
 	}
-	return strings.clone_to_cstring(strings.concatenate({"~", suffix}, context.temp_allocator), context.temp_allocator)
+	// Rendered width grows monotonically with k, so binary-search the widest
+	// stem[:k] + "~" + suffix that still fits (O(log n) measures, not O(n)).
+	lo, hi := 0, len(stem)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if measure(trunc(stem, mid, suffix), size) <= maxw { lo = mid } else { hi = mid - 1 }
+	}
+	return trunc(stem, lo, suffix)
 }
 
 @(private="file") inline_field :: proc(app: ^App, r: rl.Rectangle, x_off, size: f32) {
@@ -782,17 +793,14 @@ main :: proc() {
 	app: App
 	app.status = .Idle
 	list_sketches(&app)
-	// initial sketch: first positional arg (e.g. `odessa attractor`), else "hello"
-	app.current = 0
+	// initial sketch: first positional arg (e.g. `rune attractor`), else "hello"
 	want := "hello"
 	for a in os.args[1:] {
 		if len(a) >= 2 && a[:2] == "--" { continue }
 		want = a
 		break
 	}
-	for name, i in app.sketches {
-		if name == want { app.current = i; break }
-	}
+	select_sketch_by_name(&app, want)
 	app.current_file = 0
 	list_files(&app)
 	load_file(&app)
@@ -830,6 +838,9 @@ main :: proc() {
 
 			if app.input_mode != .None {
 				name_input(&app) // editor input suspended while an inline field is active
+			} else if app.menu_kind != .None {
+				// a file popup is open: swallow editor keystrokes; Esc closes it
+				if rl.IsKeyPressed(.ESCAPE) { app.menu_kind = .None }
 			} else {
 				prev_cursor := app.buf.cursor
 				editor_input(&app.buf)
