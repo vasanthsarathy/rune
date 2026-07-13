@@ -44,6 +44,7 @@ jobs:
           odin test canvas
           odin test editor
           odin test runner
+          odin test sketch
 
       # Odin won't create the -out directory; make it before building.
       - name: Prepare build dir
