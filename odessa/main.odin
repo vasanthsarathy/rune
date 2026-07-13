@@ -106,9 +106,9 @@ CONSOLE_H  :: 160
 LINE_H     :: 20
 FONT_SIZE  :: 18
 
-// Number of console lines that fit in the bottom strip.
+// Number of console lines that fit in the bottom strip (below its label).
 console_visible_lines :: proc() -> int {
-	return CONSOLE_H / LINE_H
+	return (CONSOLE_H - CONSOLE_PAD) / LINE_H
 }
 
 // Editor area: right of the sidebar, below the toolbar, above the console strip.
@@ -210,18 +210,23 @@ button_clicked :: proc(rect: rl.Rectangle, enabled: bool) -> bool {
 	return rl.CheckCollisionPointRec(rl.GetMousePosition(), rect) && rl.IsMouseButtonPressed(.LEFT)
 }
 
-// Draw a labeled button (no side effects).
-draw_button :: proc(rect: rl.Rectangle, label: cstring, enabled: bool) {
+// Draw a labeled button (no side effects). Primary = filled accent; secondary
+// = quiet filled surface.
+draw_button :: proc(rect: rl.Rectangle, label: cstring, enabled: bool, primary := false) {
 	hover := enabled && rl.CheckCollisionPointRec(rl.GetMousePosition(), rect)
-	col := rl.Color{60, 60, 68, 255}
-	if !enabled {
-		col = rl.Color{40, 40, 46, 255}
-	} else if hover {
-		col = rl.Color{90, 90, 100, 255}
+	fg: rl.Color
+	if primary {
+		bg := ACCENT_DK
+		if enabled { bg = hover ? rl.Color{132, 214, 255, 255} : ACCENT }
+		rl.DrawRectangleRounded(rect, 0.35, 6, bg)
+		fg = enabled ? BG_DEEP : FG_DIM
+	} else {
+		bg := enabled ? (hover ? BG_HOVER : BG_RAISE) : BG_RAISE
+		rl.DrawRectangleRounded(rect, 0.35, 6, bg)
+		fg = enabled ? FG : FG_DIM
 	}
-	rl.DrawRectangleRec(rect, col)
-	tw := measure(label, 20)
-	draw_text(label, rect.x + (rect.width-tw)/2, rect.y + 6, 20, rl.WHITE)
+	tw := measure(label, 18)
+	draw_text(label, rect.x + (rect.width-tw)/2, rect.y + (rect.height-18)/2, 18, fg)
 }
 
 do_run :: proc(app: ^App) {
@@ -264,64 +269,74 @@ do_stop :: proc(app: ^App) {
 
 // Pure render of the (already-clamped) console as a fixed bottom strip starting
 // at top_y. Scroll clamping lives in the update phase; no side effects.
+CONSOLE_PAD :: 22 // room for the CONSOLE eyebrow label
+
 draw_console_strip :: proc(app: ^App, top_y: int) {
 	top := i32(top_y)
 	bottom := rl.GetScreenHeight()
 	if bottom <= top { return }
-	rl.DrawRectangle(0, top, rl.GetScreenWidth(), bottom-top, rl.Color{16, 16, 20, 255})
+	rl.DrawRectangle(0, top, rl.GetScreenWidth(), bottom-top, BG_PANEL)
+	rl.DrawRectangle(0, top, rl.GetScreenWidth(), 1, LINE) // hairline divider
+	draw_eyebrow("CONSOLE", 12, f32(top)+6)
 
 	if len(app.console_lines) == 0 {
-		draw_text("(console)", 8, f32(top)+4, FONT_SIZE, rl.Color{90, 90, 100, 255})
+		draw_text("build output appears here", 12, f32(top)+CONSOLE_PAD, FONT_SIZE, FG_DIM)
 		return
 	}
 
-	col := rl.Color{200, 200, 205, 255}
-	if app.status == .Compile_Error { col = rl.Color{255, 180, 180, 255} }
+	col := app.status == .Compile_Error ? DANGER : FG
 
-	max_visible := console_visible_lines()
-	y := f32(top) + 4
+	max_visible := (int(bottom-top) - CONSOLE_PAD) / LINE_H
+	y := f32(top) + CONSOLE_PAD
 	for i := app.console_scroll; i < len(app.console_lines) && (i - app.console_scroll) < max_visible; i += 1 {
 		ctext := strings.clone_to_cstring(app.console_lines[i], context.temp_allocator)
-		draw_text(ctext, 8, y, FONT_SIZE, col)
+		draw_text(ctext, 12, y, FONT_SIZE, col)
 		y += LINE_H
 	}
 }
 
+SIDEBAR_TOP :: TOOLBAR_H + 26 // room for the SKETCHES eyebrow
+
 // "+ New" button occupies the first sidebar row; sketch rows follow below it.
 new_button_rect :: proc() -> rl.Rectangle {
-	return rl.Rectangle{0, TOOLBAR_H, SIDEBAR_W, SKETCH_ROW}
+	return rl.Rectangle{8, SIDEBAR_TOP, SIDEBAR_W-16, SKETCH_ROW-4}
 }
 sketch_row_rect :: proc(i: int) -> rl.Rectangle {
-	return rl.Rectangle{0, f32(TOOLBAR_H + (i+1)*SKETCH_ROW), SIDEBAR_W, SKETCH_ROW}
+	return rl.Rectangle{0, f32(SIDEBAR_TOP + SKETCH_ROW + i*SKETCH_ROW), SIDEBAR_W, SKETCH_ROW}
 }
 
 draw_sidebar :: proc(app: ^App) {
 	sh := rl.GetScreenHeight()
-	rl.DrawRectangle(0, TOOLBAR_H, SIDEBAR_W, sh-TOOLBAR_H, rl.Color{28, 28, 34, 255})
+	rl.DrawRectangle(0, TOOLBAR_H, SIDEBAR_W, sh-TOOLBAR_H, BG_PANEL)
 	mouse := rl.GetMousePosition()
 
-	// "+ New" row: shows a text field while naming, otherwise a button.
+	draw_eyebrow("SKETCHES", 12, f32(TOOLBAR_H)+8)
+
+	// "+ New" row: a text field while naming, otherwise an accent-ghost button.
 	nb := new_button_rect()
 	if app.naming {
-		rl.DrawRectangleRec(nb, rl.Color{40, 46, 60, 255})
-		label := strings.clone_to_cstring(strings.concatenate({"", string(app.name_buf[:]), "_"}, context.temp_allocator), context.temp_allocator)
-		draw_text(label, 8, nb.y+5, 17, rl.Color{235, 235, 240, 255})
+		rl.DrawRectangleRounded(nb, 0.3, 6, ACCENT_DK)
+		label := strings.clone_to_cstring(strings.concatenate({string(app.name_buf[:]), "_"}, context.temp_allocator), context.temp_allocator)
+		draw_text(label, nb.x+8, nb.y+3, 16, FG_BRIGHT)
 	} else {
 		hov := rl.CheckCollisionPointRec(mouse, nb)
-		rl.DrawRectangleRec(nb, hov ? rl.Color{50, 60, 50, 255} : rl.Color{34, 40, 34, 255})
-		draw_text("+ New", 8, nb.y+5, 17, rl.Color{150, 200, 150, 255})
+		rl.DrawRectangleRounded(nb, 0.3, 6, hov ? BG_HOVER : BG_RAISE)
+		draw_text("+  New sketch", nb.x+8, nb.y+3, 16, hov ? ACCENT : FG_DIM)
 	}
 
 	for name, i in app.sketches {
 		r := sketch_row_rect(i)
-		bg := rl.Color{28, 28, 34, 255}
-		if i == app.current             { bg = rl.Color{54, 60, 82, 255} }
-		else if rl.CheckCollisionPointRec(mouse, r) { bg = rl.Color{40, 40, 48, 255} }
-		rl.DrawRectangleRec(r, bg)
-		fg := i == app.current ? rl.Color{235, 235, 240, 255} : rl.Color{170, 170, 180, 255}
-		draw_text(strings.clone_to_cstring(name, context.temp_allocator), 10, r.y+5, 17, fg)
+		active := i == app.current
+		if active {
+			rl.DrawRectangleRec(r, BG_SEL)
+			rl.DrawRectangle(0, i32(r.y), 3, i32(r.height), ACCENT) // signature accent bar
+		} else if rl.CheckCollisionPointRec(mouse, r) {
+			rl.DrawRectangleRec(r, BG_HOVER)
+		}
+		fg := active ? FG_BRIGHT : FG_DIM
+		draw_text(strings.clone_to_cstring(name, context.temp_allocator), 14, r.y+5, 17, fg)
 	}
-	rl.DrawRectangle(SIDEBAR_W-1, TOOLBAR_H, 1, sh-TOOLBAR_H, rl.Color{50, 50, 58, 255})
+	rl.DrawRectangle(SIDEBAR_W-1, TOOLBAR_H, 1, sh-TOOLBAR_H, LINE)
 }
 
 // Handle a click in the sidebar (the + New button, or a sketch row).
@@ -342,8 +357,19 @@ sidebar_click :: proc(app: ^App) {
 	}
 }
 
+// small status dot color per state
+status_dot :: proc(s: Status) -> rl.Color {
+	switch s {
+	case .Running:       return ACCENT
+	case .Compiling:     return rl.Color{221, 161, 106, 255} // amber
+	case .Compile_Error: return DANGER
+	case .Idle:          return FG_DIM
+	}
+	return FG_DIM
+}
+
 draw_ui :: proc(app: ^App) {
-	rl.ClearBackground(rl.Color{24, 24, 28, 255})
+	rl.ClearBackground(BG_DEEP)
 
 	// editor (right of sidebar, between toolbar and console strip)
 	editor_draw(&app.buf, editor_area(), &app.ed_scroll)
@@ -353,12 +379,22 @@ draw_ui :: proc(app: ^App) {
 	draw_sidebar(app)
 	draw_console_strip(app, int(rl.GetScreenHeight()) - CONSOLE_H)
 
-	// toolbar on top
-	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), TOOLBAR_H, rl.Color{32, 32, 38, 255})
-	draw_button(RUN_RECT, "Run", app.status != .Running && app.status != .Compiling)
+	// toolbar
+	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), TOOLBAR_H, BG_RAISE)
+	rl.DrawRectangle(0, TOOLBAR_H-1, rl.GetScreenWidth(), 1, LINE) // hairline
+	draw_button(RUN_RECT, "Run", app.status != .Running && app.status != .Compiling, primary = true)
 	draw_button(STOP_RECT, "Stop", app.status == .Running)
-	draw_text(status_text(app.status), 210, 14, 20, rl.Color{200, 200, 210, 255})
-	draw_text(strings.clone_to_cstring(current_name(app), context.temp_allocator), 340, 14, 20, rl.Color{130, 160, 210, 255})
+
+	// current sketch name (accent) — the throughline tying chrome to the art
+	name_x: f32 = 210
+	draw_text(strings.clone_to_cstring(current_name(app), context.temp_allocator), name_x, 15, 20, ACCENT)
+
+	// status: a dot + label, right-aligned
+	label := status_text(app.status)
+	lw := measure(label, 16)
+	sx := f32(rl.GetScreenWidth()) - lw - 20
+	rl.DrawCircle(i32(sx)-12, 24, 4, status_dot(app.status))
+	draw_text(label, sx, 16, 16, FG_DIM)
 }
 
 main :: proc() {

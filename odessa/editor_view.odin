@@ -102,13 +102,13 @@ prefix_w :: proc(line: []u8, col: int) -> f32 {
 
 token_color :: proc(k: editor.Token_Kind) -> rl.Color {
 	switch k {
-	case .Keyword: return rl.Color{198, 120, 221, 255} // purple
-	case .Number:  return rl.Color{209, 154, 102, 255} // orange
-	case .String:  return rl.Color{152, 195, 121, 255} // green
-	case .Char:    return rl.Color{152, 195, 121, 255} // green
-	case .Comment: return rl.Color{106, 115, 125, 255} // gray
+	case .Keyword: return SYN_KEYWORD
+	case .Number:  return SYN_NUMBER
+	case .String:  return SYN_STRING
+	case .Char:    return SYN_STRING
+	case .Comment: return SYN_COMMENT
 	}
-	return rl.Color{220, 220, 225, 255}
+	return FG
 }
 
 @(private="file") g_dragging: bool
@@ -134,7 +134,7 @@ editor_mouse :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: int) {
 	if rl.IsMouseButtonReleased(.LEFT) { g_dragging = false }
 }
 
-BASE_COL :: rl.Color{220, 220, 225, 255}
+BASE_COL :: FG
 
 // Draw one byte-span of a line at column `col` in `col_color`, returning the
 // end column drawn to. Uses measured widths so it lines up with everything else.
@@ -151,9 +151,15 @@ editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
 	// phase (ensure_cursor_visible), so manual wheel scrolling isn't fought here.
 	scroll^ = clamp(scroll^, 0, max(0, len(b.lines) - visible))
 
-	rl.DrawRectangleRec(area, rl.Color{18, 18, 22, 255})
+	rl.DrawRectangleRec(area, BG_DEEP)
 	base_x := area.x + GUTTER_W
 	nib := measure("m", g_ed_font) // nominal width for the newline sliver
+
+	// subtle current-line band
+	if crow := b.cursor.line - scroll^; crow >= 0 && crow < visible {
+		ly := area.y + f32(crow)*ed_line_h()
+		rl.DrawRectangleRec(rl.Rectangle{area.x, ly, area.width, ed_line_h()}, rl.Color{21, 23, 31, 255})
+	}
 
 	// selection highlight
 	if editor.has_selection(b) {
@@ -168,7 +174,7 @@ editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
 			y := area.y + f32(row)*ed_line_h()
 			w := x1 - x0
 			if ln < end.line { w += nib } // show the trailing newline as a sliver
-			rl.DrawRectangleRec(rl.Rectangle{x0, y, w, ed_line_h()}, rl.Color{50, 70, 120, 255})
+			rl.DrawRectangleRec(rl.Rectangle{x0, y, w, ed_line_h()}, BG_SEL)
 		}
 	}
 
@@ -177,8 +183,11 @@ editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
 		ln := scroll^ + row
 		if ln >= len(b.lines) { break }
 		y := area.y + f32(row)*ed_line_h()
+		// right-aligned line number; current line is brighter
 		num := rl.TextFormat("%d", ln+1)
-		draw_text(num, area.x+8, y, g_ed_font, rl.Color{90, 90, 110, 255})
+		nsz := g_ed_font * 0.92
+		nx := area.x + GUTTER_W - 14 - measure(num, nsz)
+		draw_text(num, nx, y+1, nsz, ln == b.cursor.line ? FG : FG_DIM)
 
 		line := b.lines[ln][:]
 		toks := editor.tokenize(line, context.temp_allocator)
@@ -196,6 +205,6 @@ editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
 	if crow >= 0 && crow < visible {
 		cx := base_x + prefix_w(b.lines[b.cursor.line][:], b.cursor.col)
 		cy := area.y + f32(crow)*ed_line_h()
-		rl.DrawRectangleRec(rl.Rectangle{cx, cy, 2, ed_line_h()}, rl.Color{240, 240, 120, 255})
+		rl.DrawRectangleRec(rl.Rectangle{cx, cy, 2, ed_line_h()}, ACCENT)
 	}
 }

@@ -101,15 +101,17 @@ ac_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: int) {
 
 	n := min(len(g_ac_matches), AC_MAX_ROWS)
 	row := ed_line_h()
-	w: f32 = 240
-	rl.DrawRectangleRec(rl.Rectangle{x, y, w, f32(n)*row + 4}, rl.Color{36, 36, 44, 250})
-	rl.DrawRectangleLinesEx(rl.Rectangle{x, y, w, f32(n)*row + 4}, 1, rl.Color{70, 70, 84, 255})
+	w: f32 = 260
+	box := rl.Rectangle{x, y, w, f32(n)*row + 6}
+	rl.DrawRectangleRounded(box, 0.06, 6, BG_RAISE)
+	rl.DrawRectangleRoundedLinesEx(box, 0.06, 6, 1, LINE)
 	for i in 0..<n {
-		ry := y + 2 + f32(i)*row
+		ry := y + 3 + f32(i)*row
 		if i == g_ac_sel {
-			rl.DrawRectangleRec(rl.Rectangle{x, ry, w, row}, rl.Color{54, 60, 82, 255})
+			rl.DrawRectangleRec(rl.Rectangle{x+2, ry, w-4, row}, BG_SEL)
+			rl.DrawRectangle(i32(x)+2, i32(ry), 2, i32(row), ACCENT) // accent marker
 		}
-		fg := i == g_ac_sel ? rl.Color{235, 235, 240, 255} : rl.Color{180, 180, 190, 255}
-		draw_text(strings.clone_to_cstring(g_ac_matches[i], context.temp_allocator), x+8, ry+2, g_ed_font*0.95, fg)
+		fg := i == g_ac_sel ? FG_BRIGHT : FG
+		draw_text(strings.clone_to_cstring(g_ac_matches[i], context.temp_allocator), x+12, ry+2, g_ed_font*0.95, fg)
 	}
 }
