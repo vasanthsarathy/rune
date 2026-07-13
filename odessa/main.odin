@@ -65,6 +65,12 @@ current_name :: proc(app: ^App) -> string {
 
 RUN_RECT  :: rl.Rectangle{8, 8, 90, 32}
 STOP_RECT :: rl.Rectangle{106, 8, 90, 32}
+DOCS_RECT :: rl.Rectangle{204, 8, 76, 32}
+
+// Toggle the docs panel (jumps to the symbol under the cursor when opening).
+docs_toggle :: proc(app: ^App) {
+	if g_docs_open { g_docs_open = false } else { docs_open_at_cursor(&app.buf) }
+}
 
 Status :: enum { Idle, Compiling, Running, Compile_Error }
 
@@ -379,15 +385,18 @@ draw_ui :: proc(app: ^App) {
 	draw_sidebar(app)
 	draw_console_strip(app, int(rl.GetScreenHeight()) - CONSOLE_H)
 
+	// docs panel overlays the workspace when open
+	if g_docs_open { docs_draw() }
+
 	// toolbar
 	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), TOOLBAR_H, BG_RAISE)
 	rl.DrawRectangle(0, TOOLBAR_H-1, rl.GetScreenWidth(), 1, LINE) // hairline
 	draw_button(RUN_RECT, "Run", app.status != .Running && app.status != .Compiling, primary = true)
 	draw_button(STOP_RECT, "Stop", app.status == .Running)
+	draw_button(DOCS_RECT, g_docs_open ? "Editor" : "Docs", true)
 
 	// current sketch name (accent) — the throughline tying chrome to the art
-	name_x: f32 = 210
-	draw_text(strings.clone_to_cstring(current_name(app), context.temp_allocator), name_x, 15, 20, ACCENT)
+	draw_text(strings.clone_to_cstring(current_name(app), context.temp_allocator), 296, 15, 20, ACCENT)
 
 	// status: a dot + label, right-aligned
 	label := status_text(app.status)
@@ -422,7 +431,7 @@ main :: proc() {
 	}
 	load_sketch(&app)
 	defer editor.destroy_buffer(&app.buf)
-	defer { for s in app.sketches { delete(s) }; delete(app.sketches); delete(app.name_buf); delete(g_ac_matches) }
+	defer { for s in app.sketches { delete(s) }; delete(app.sketches); delete(app.name_buf); delete(g_ac_matches); delete(g_docs_search); delete(g_docs_filtered) }
 
 	// --run: build & launch the sketch immediately on startup (scriptable entry).
 	if has_arg("--run") {
@@ -438,47 +447,48 @@ main :: proc() {
 
 		ctrl := rl.IsKeyDown(.LEFT_CONTROL) || rl.IsKeyDown(.RIGHT_CONTROL)
 
-		// sketch list clicks (+ New, or switch the open sketch)
-		sidebar_click(&app)
+		// F1 or the Docs button toggles the reference panel (always available)
+		if rl.IsKeyPressed(.F1) || button_clicked(DOCS_RECT, true) { docs_toggle(&app) }
 
-		if app.naming {
-			// typing the name of a new sketch — editor input is suspended
-			name_input(&app)
-		} else {
-			// editor edits (typing goes here; Ctrl combos for run/save handled below)
-			prev_cursor := app.buf.cursor
-			editor_input(&app.buf)
-			editor_mouse(&app.buf, editor_area(), app.ed_scroll)
-			// only chase the cursor when it actually moved (so wheel scrolling sticks)
-			if app.buf.cursor != prev_cursor {
-				ensure_cursor_visible(&app.buf, &app.ed_scroll, editor_visible_lines(editor_area()))
-			}
-		}
-
-		if ctrl && rl.IsKeyPressed(.S) { save_sketch(&app) }
-		// Ctrl +/- : adjust editor font size
-		if ctrl && (rl.IsKeyPressed(.EQUAL) || rl.IsKeyPressed(.KP_ADD))      { g_ed_font = clamp(g_ed_font+2, 10, 40) }
-		if ctrl && (rl.IsKeyPressed(.MINUS) || rl.IsKeyPressed(.KP_SUBTRACT)) { g_ed_font = clamp(g_ed_font-2, 10, 40) }
-
+		// Run / Stop always available
 		run_now  := button_clicked(RUN_RECT, app.status != .Running && app.status != .Compiling) || (ctrl && rl.IsKeyPressed(.R))
 		stop_now := button_clicked(STOP_RECT, app.status == .Running)
-
 		if run_now  { do_run(&app) }
 		if stop_now { do_stop(&app) }
 
-		// Mouse wheel: Ctrl+wheel zooms; otherwise scroll whichever pane is hovered.
-		if wheel := rl.GetMouseWheelMove(); wheel != 0 {
-			if ctrl {
-				g_ed_font = clamp(g_ed_font + wheel, 10, 40)
-			} else if rl.CheckCollisionPointRec(rl.GetMousePosition(), editor_area()) {
-				app.ed_scroll -= int(wheel * 3)
+		if g_docs_open {
+			docs_input()
+		} else {
+			// sketch list clicks (+ New, or switch the open sketch)
+			sidebar_click(&app)
+
+			if app.naming {
+				name_input(&app) // editor input suspended while naming
 			} else {
-				app.console_scroll -= int(wheel * 3)
+				prev_cursor := app.buf.cursor
+				editor_input(&app.buf)
+				editor_mouse(&app.buf, editor_area(), app.ed_scroll)
+				if app.buf.cursor != prev_cursor {
+					ensure_cursor_visible(&app.buf, &app.ed_scroll, editor_visible_lines(editor_area()))
+				}
+				if ctrl && rl.IsKeyPressed(.S) { save_sketch(&app) }
+				if ctrl && (rl.IsKeyPressed(.EQUAL) || rl.IsKeyPressed(.KP_ADD))      { g_ed_font = clamp(g_ed_font+2, 10, 40) }
+				if ctrl && (rl.IsKeyPressed(.MINUS) || rl.IsKeyPressed(.KP_SUBTRACT)) { g_ed_font = clamp(g_ed_font-2, 10, 40) }
 			}
+
+			// Mouse wheel: Ctrl+wheel zooms; otherwise scroll the hovered pane.
+			if wheel := rl.GetMouseWheelMove(); wheel != 0 {
+				if ctrl {
+					g_ed_font = clamp(g_ed_font + wheel, 10, 40)
+				} else if rl.CheckCollisionPointRec(rl.GetMousePosition(), editor_area()) {
+					app.ed_scroll -= int(wheel * 3)
+				} else {
+					app.console_scroll -= int(wheel * 3)
+				}
+			}
+			app.console_scroll = clamp(app.console_scroll, 0, max(0, len(app.console_lines) - console_visible_lines()))
+			app.ed_scroll      = clamp(app.ed_scroll, 0, max(0, len(app.buf.lines) - editor_visible_lines(editor_area())))
 		}
-		// Clamp both scrolls (guards shrunk window / font changes).
-		app.console_scroll = clamp(app.console_scroll, 0, max(0, len(app.console_lines) - console_visible_lines()))
-		app.ed_scroll      = clamp(app.ed_scroll, 0, max(0, len(app.buf.lines) - editor_visible_lines(editor_area())))
 
 		// --- draw ---
 		rl.BeginDrawing()
