@@ -8,10 +8,13 @@
 
 A self-contained studio for making generative art: a built-in code editor, a Processing-style `canvas` library, and one-key compile-and-run — backed by Odin's C-like directness and native performance.
 
+[![Website](https://img.shields.io/badge/website-vsarathy.com%2Frune-5CC8FF)](https://vsarathy.com/rune/)
 [![License: zlib](https://img.shields.io/badge/license-zlib-blue.svg)](LICENSE)
 ![Built with Odin](https://img.shields.io/badge/built%20with-Odin-1e293b)
 ![Powered by raylib](https://img.shields.io/badge/graphics-raylib-white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+
+**[rune website & download →](https://vsarathy.com/rune/)**
 
 <img src="assets/screenshots/editor.png" width="820" alt="The Rune editor" />
 
