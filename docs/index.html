@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rune — creative coding in Odin</title>
+<meta name="description" content="Rune is a Processing-style creative-coding IDE for the Odin language: native speed, batteries included." />
+<link rel="icon" href="img/rune-logo.svg" />
+<meta property="og:title" content="Rune — creative coding in Odin" />
+<meta property="og:description" content="Native speed, Processing-simple. A batteries-included studio for generative art in Odin." />
+<meta property="og:image" content="img/attractor.png" />
+<style>
+  :root{
+    --bg:#0D0E14; --panel:#12141C; --raise:#1A1D28; --line:#262B3A;
+    --dim:#828AA3; --fg:#D3D8E6; --bright:#EEF1F8; --accent:#5CC8FF;
+    --kw:#C680E2; --num:#DDA16A; --str:#8CC896; --com:#586074;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,pre{font-family:"Cascadia Mono",Consolas,"SF Mono",Menlo,monospace}
+  .wrap{max-width:1040px; margin:0 auto; padding:0 24px}
+  .eyebrow{font-size:12px; letter-spacing:.22em; text-transform:uppercase; color:var(--dim); font-weight:600}
+
+  /* nav */
+  nav{position:sticky; top:0; z-index:10; background:rgba(13,14,20,.82); backdrop-filter:blur(10px); border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex; align-items:center; gap:14px; height:60px}
+  nav .brand{display:flex; align-items:center; gap:10px; font-weight:700; color:var(--bright); font-size:18px}
+  nav .brand svg{width:26px; height:26px}
+  nav .sp{flex:1}
+  nav a.link{color:var(--fg); font-weight:500}
+  .btn{display:inline-block; padding:9px 16px; border-radius:9px; font-weight:600; font-size:14px}
+  .btn-accent{background:var(--accent); color:#04121b}
+  .btn-accent:hover{background:#84d6ff; text-decoration:none}
+  .btn-ghost{border:1px solid var(--line); color:var(--fg)}
+  .btn-ghost:hover{border-color:var(--dim); text-decoration:none}
+
+  /* hero */
+  header.hero{position:relative; overflow:hidden; text-align:center; padding:96px 0 72px}
+  header.hero::before{content:""; position:absolute; inset:-20% 0 auto; height:520px;
+    background:radial-gradient(60% 100% at 50% 0%, rgba(92,200,255,.14), transparent 70%); pointer-events:none}
+  .hero .logo{width:84px; height:84px; margin-bottom:22px; filter:drop-shadow(0 6px 24px rgba(92,200,255,.25))}
+  .hero h1{font-size:clamp(44px,7vw,76px); margin:.1em 0 .12em; letter-spacing:-.02em; color:var(--bright); font-weight:800}
+  .hero .tag{font-size:clamp(18px,2.6vw,24px); color:var(--fg); margin:0 auto 10px; max-width:640px}
+  .hero .tag b{color:var(--accent); font-weight:700}
+  .hero .sub{color:var(--dim); max-width:620px; margin:0 auto 30px}
+  .hero .cta{display:flex; gap:12px; justify-content:center; flex-wrap:wrap}
+  .shot{max-width:100%; border-radius:12px; border:1px solid var(--line); box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  .hero .shotwrap{margin-top:52px}
+
+  section{padding:72px 0; border-top:1px solid var(--line)}
+  h2{font-size:clamp(28px,4vw,38px); letter-spacing:-.02em; color:var(--bright); margin:.2em 0 .3em}
+  .lead{color:var(--dim); max-width:720px; font-size:18px}
+
+  /* why table */
+  .tablewrap{overflow-x:auto; margin-top:34px; border:1px solid var(--line); border-radius:12px}
+  table{border-collapse:collapse; width:100%; min-width:560px; font-size:15px}
+  th,td{padding:14px 16px; text-align:left; border-bottom:1px solid var(--line)}
+  thead th{color:var(--dim); font-weight:600; font-size:13px; letter-spacing:.04em}
+  tbody th{color:var(--fg); font-weight:500}
+  td.y{color:var(--accent); font-weight:700}
+  td.n{color:#5b6176}
+  tr.me{background:rgba(92,200,255,.06)}
+  tr.me th, tr.me td{color:var(--bright)}
+  tr:last-child td,tr:last-child th{border-bottom:0}
+
+  /* features */
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-top:36px}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:22px}
+  .card h3{margin:.1em 0 .35em; color:var(--bright); font-size:18px}
+  .card p{margin:0; color:var(--dim); font-size:15px}
+  .card .ic{width:34px; height:34px; border-radius:8px; background:rgba(92,200,255,.12); display:grid; place-items:center; color:var(--accent); margin-bottom:14px; font-size:18px}
+
+  /* showcase */
+  .showcase{display:grid; grid-template-columns:1.1fr 1fr; gap:28px; align-items:center}
+  @media(max-width:820px){.showcase{grid-template-columns:1fr}}
+  pre.code{background:#0b0c12; border:1px solid var(--line); border-radius:12px; padding:20px; overflow-x:auto; font-size:14px; line-height:1.7; margin:0}
+  pre.code .kw{color:var(--kw)} pre.code .num{color:var(--num)} pre.code .str{color:var(--str)} pre.code .com{color:var(--com)} pre.code .fn{color:var(--accent)}
+
+  /* get started */
+  .steps{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:34px}
+  @media(max-width:700px){.steps{grid-template-columns:1fr}}
+  .step{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:22px}
+  .step h3{margin:.1em 0 .5em; color:var(--bright); font-size:17px}
+  .step pre{background:#0b0c12; border:1px solid var(--line); border-radius:8px; padding:12px 14px; overflow-x:auto; font-size:13px; margin:.6em 0 0; color:var(--fg)}
+  .note{color:var(--dim); font-size:14px; margin-top:8px}
+
+  footer{border-top:1px solid var(--line); padding:44px 0; color:var(--dim); font-size:14px}
+  footer .wrap{display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap}
+  footer a{color:var(--fg)}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <span class="brand">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><g stroke="#5CC8FF" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M24.3 13.3 L24.3 50.7"/><path d="M24.3 13.3 L40.8 22.1 L24.3 30.9"/><path d="M24.3 30.9 L41.9 50.7"/></g></svg>
+    Rune
+  </span>
+  <span class="sp"></span>
+  <a class="link" href="#why">Why</a>
+  <a class="link" href="#features">Features</a>
+  <a class="link" href="#start">Get started</a>
+  <a class="btn btn-ghost" href="https://github.com/vasanthsarathy/rune">GitHub</a>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#12141C"/><g stroke="#5CC8FF" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M24.3 13.3 L24.3 50.7"/><path d="M24.3 13.3 L40.8 22.1 L24.3 30.9"/><path d="M24.3 30.9 L41.9 50.7"/></g></svg>
+  <h1>Rune</h1>
+  <p class="tag">Creative coding in <b>Odin</b> — native speed, Processing-simple.</p>
+  <p class="sub">A self-contained studio for generative art: a built-in code editor, a Processing-style <code>canvas</code> library, and one-key compile-and-run. For the heavy stuff Processing and p5 can't keep up with.</p>
+  <div class="cta">
+    <a class="btn btn-accent" href="https://github.com/vasanthsarathy/rune/releases/latest">Download for Windows</a>
+    <a class="btn btn-ghost" href="https://github.com/vasanthsarathy/rune">View source</a>
+  </div>
+  <div class="shotwrap"><img class="shot" src="img/editor.png" alt="The Rune editor" /></div>
+</div></header>
+
+<section id="why"><div class="wrap">
+  <span class="eyebrow">Why it exists</span>
+  <h2>The gap in the middle</h2>
+  <p class="lead">Processing and p5.js are wonderful for starting, but Java and JavaScript hit a wall — millions of particles, strange attractors, real-time simulation. The native options solve performance but ask a lot: openFrameworks and Cinder drag in decades of C++; Nannou is fast but steep. <b style="color:var(--fg)">Rune sits in between.</b> Odin gives you C's directness with none of C++'s baggage or Rust's ceremony — and Rune wraps it in a studio so you don't assemble a toolchain.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th></th><th>Processing / p5</th><th>openFrameworks / Cinder</th><th>Nannou</th><th>Rune</th></tr></thead>
+    <tbody>
+      <tr><th>Native performance</th><td class="n">—</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+      <tr><th>Simple language</th><td class="y">✓</td><td class="n">C++</td><td class="n">~</td><td class="y">Odin</td></tr>
+      <tr><th>Built-in editor + run</th><td class="y">✓</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+      <tr class="me"><th>Batteries included</th><td class="y">✓</td><td class="n">~</td><td class="n">~</td><td class="y">✓</td></tr>
+    </tbody>
+  </table></div>
+</div></section>
+
+<section id="features"><div class="wrap">
+  <span class="eyebrow">What's inside</span>
+  <h2>A studio, not a toolchain</h2>
+  <div class="grid">
+    <div class="card"><div class="ic">✎</div><h3>Built-in editor</h3><p>Syntax highlighting, <code>c.</code> autocomplete for the whole API, selection, copy/paste, undo/redo, adjustable font.</p></div>
+    <div class="card"><div class="ic">▶</div><h3>One-key run</h3><p><code>Ctrl+R</code> compiles your sketch and launches it in its own window. Compile errors show inline.</p></div>
+    <div class="card"><div class="ic">◉</div><h3>The canvas library</h3><p>Shapes, HSL/HSV color, seedable random, Perlin noise, <code>Vec2</code> helpers, easing, and a persistent accumulation buffer.</p></div>
+    <div class="card"><div class="ic">?</div><h3>In-app reference</h3><p>Press <code>F1</code> for searchable API docs with examples, an Odin cheatsheet, and a shortcuts list — jump to any symbol.</p></div>
+    <div class="card"><div class="ic">⎙</div><h3>Print-ready</h3><p>Paper-size presets (<code>size_paper(.A4, 300)</code>) and full-resolution PNG export with <code>Ctrl+S</code>.</p></div>
+    <div class="card"><div class="ic">⚡</div><h3>Native speed</h3><p>Compiled Odin + raylib. Push millions of points where JS/Java fall over — the whole point.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <span class="eyebrow">A sketch</span>
+  <h2>Write <code>setup</code> and <code>draw</code>. Hit Run.</h2>
+  <div class="showcase" style="margin-top:34px">
+    <pre class="code"><span class="kw">package</span> main
+<span class="kw">import</span> c <span class="str">"../../canvas"</span>
+<span class="kw">import</span> <span class="str">"core:math"</span>
+
+t: f32
+
+setup :: <span class="kw">proc</span>() {
+	c.<span class="fn">size</span>(<span class="num">900</span>, <span class="num">900</span>)
+	c.<span class="fn">background</span>(<span class="num">6</span>, <span class="num">6</span>, <span class="num">10</span>)
+}
+
+<span class="com">// a de Jong strange attractor</span>
+x, y: f32 = <span class="num">0.1</span>, <span class="num">0.1</span>
+draw :: <span class="kw">proc</span>() {
+	c.<span class="fn">stroke</span>(<span class="num">150</span>, <span class="num">190</span>, <span class="num">255</span>, <span class="num">8</span>)
+	<span class="kw">for</span> i <span class="kw">in</span> <span class="num">0</span>..&lt;<span class="num">120_000</span> {
+		nx := math.sin(<span class="num">1.4</span>*y) - math.cos(<span class="num">-2.3</span>*x)
+		ny := math.sin(<span class="num">2.4</span>*x) - math.cos(<span class="num">-2.1</span>*y)
+		x, y = nx, ny
+		c.<span class="fn">point</span>(<span class="num">450</span>+x*<span class="num">200</span>, <span class="num">450</span>+y*<span class="num">200</span>)
+	}
+}</pre>
+    <img class="shot" src="img/attractor.png" alt="A de Jong strange attractor rendered in Rune" />
+  </div>
+</div></section>
+
+<section id="start"><div class="wrap">
+  <span class="eyebrow">Get started</span>
+  <h2>Two minutes to your first sketch</h2>
+  <p class="lead">Rune compiles your sketches with the <a href="https://odin-lang.org/docs/install/">Odin compiler</a> (which bundles raylib), so you'll need Odin on your <code>PATH</code>.</p>
+  <div class="steps">
+    <div class="step">
+      <h3>Download (Windows)</h3>
+      <p class="note">Grab the latest release, unzip, and run <code>rune.exe</code> — keep it next to the bundled <code>canvas/</code> and <code>sketches/</code>.</p>
+      <p style="margin-top:14px"><a class="btn btn-accent" href="https://github.com/vasanthsarathy/rune/releases/latest">Download v0.1.0</a></p>
+    </div>
+    <div class="step">
+      <h3>Build from source (any OS)</h3>
+      <pre># Windows
+build.bat
+
+# Linux / macOS
+./build.sh</pre>
+      <p class="note">Then click a sketch, edit it, and press <code>Ctrl+R</code>.</p>
+    </div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <div>Rune — <a href="https://github.com/vasanthsarathy/rune/blob/main/LICENSE">zlib licensed</a>. Built on <a href="https://odin-lang.org">Odin</a> &amp; <a href="https://www.raylib.com">raylib</a>.</div>
+  <div>Inspired by <a href="https://processing.org">Processing</a>, <a href="https://github.com/mattdesl/canvas-sketch">canvas-sketch</a>, and the art of <a href="https://paulbourke.net">Paul Bourke</a>.</div>
+</div></footer>
+
+</body>
+</html>

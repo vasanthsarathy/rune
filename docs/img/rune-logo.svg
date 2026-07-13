@@ -1,0 +1,20 @@
+<svg width="128" height="128" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- Rune — the Raidho rune (ᚱ, the "R" rune: journey), drawn as clean angular
+       strokes in the signal-azure accent on the deep indigo ground. -->
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="#0D0E14"/>
+
+  <!-- faint generative hairlines (a hint of the algorithmic art) -->
+  <g stroke="#5CC8FF" stroke-width="0.6" opacity="0.14" stroke-linecap="round">
+    <line x1="10" y1="18" x2="54" y2="10"/>
+    <line x1="8"  y1="40" x2="56" y2="34"/>
+    <line x1="12" y1="54" x2="52" y2="50"/>
+  </g>
+
+  <!-- the rune -->
+  <g stroke="#5CC8FF" stroke-width="5" fill="none"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M24.3 13.3 L24.3 50.7"/>            <!-- stave -->
+    <path d="M24.3 13.3 L40.8 22.1 L24.3 30.9"/> <!-- bowl -->
+    <path d="M24.3 30.9 L41.9 50.7"/>            <!-- leg -->
+  </g>
+</svg>
