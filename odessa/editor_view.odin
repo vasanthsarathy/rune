@@ -28,6 +28,10 @@ key_go :: proc(k: rl.KeyboardKey) -> bool {
 }
 
 editor_input :: proc(b: ^editor.Buffer) {
+	// autocomplete popup gets first dibs on Up/Down/Tab/Enter/Esc
+	ac_update(b)
+	if ac_intercept(b) { return }
+
 	shift := rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT)
 	ctrl  := rl.IsKeyDown(.LEFT_CONTROL) || rl.IsKeyDown(.RIGHT_CONTROL)
 
@@ -76,7 +80,7 @@ editor_input :: proc(b: ^editor.Buffer) {
 // Pixel width of the first `col` bytes of a line, using raylib's own text
 // layout so cursor/selection/tokens line up exactly with DrawText (works for
 // any font, monospace or not).
-@(private="file") prefix_w :: proc(line: []u8, col: int) -> f32 {
+prefix_w :: proc(line: []u8, col: int) -> f32 {
 	c := clamp(col, 0, len(line))
 	if c == 0 { return 0 }
 	cs := strings.clone_to_cstring(string(line[:c]), context.temp_allocator)
@@ -107,15 +111,27 @@ token_color :: proc(k: editor.Token_Kind) -> rl.Color {
 	return rl.Color{220, 220, 225, 255}
 }
 
-// Set the cursor from a mouse click inside the editor area.
+@(private="file") g_dragging: bool
+
+@(private="file") mouse_line_col :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: int, m: rl.Vector2) -> (line, col: int) {
+	line = clamp(scroll + int((m.y - area.y) / ed_line_h()), 0, len(b.lines)-1)
+	col  = col_at_x(b.lines[line][:], m.x - area.x - GUTTER_W)
+	return
+}
+
+// Mouse: click places the cursor (starts a selection anchor); dragging extends
+// the selection. Release ends the drag.
 editor_mouse :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: int) {
-	if !rl.IsMouseButtonPressed(.LEFT) { return }
 	m := rl.GetMousePosition()
-	if !rl.CheckCollisionPointRec(m, area) { return }
-	line := scroll + int((m.y - area.y) / ed_line_h())
-	line = clamp(line, 0, len(b.lines)-1)
-	col  := col_at_x(b.lines[line][:], m.x - area.x - GUTTER_W)
-	editor.set_cursor(b, line, col) // set_cursor clamps
+	if rl.IsMouseButtonPressed(.LEFT) && rl.CheckCollisionPointRec(m, area) {
+		line, col := mouse_line_col(b, area, scroll, m)
+		editor.set_cursor(b, line, col, false) // clears selection, sets anchor here
+		g_dragging = true
+	} else if g_dragging && rl.IsMouseButtonDown(.LEFT) {
+		line, col := mouse_line_col(b, area, scroll, m)
+		editor.set_cursor(b, line, col, true)  // extend selection to cursor
+	}
+	if rl.IsMouseButtonReleased(.LEFT) { g_dragging = false }
 }
 
 BASE_COL :: rl.Color{220, 220, 225, 255}

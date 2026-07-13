@@ -347,6 +347,7 @@ draw_ui :: proc(app: ^App) {
 
 	// editor (right of sidebar, between toolbar and console strip)
 	editor_draw(&app.buf, editor_area(), &app.ed_scroll)
+	if !app.naming { ac_draw(&app.buf, editor_area(), app.ed_scroll) }
 
 	// sidebar (sketch list) and console strip
 	draw_sidebar(app)
@@ -385,7 +386,7 @@ main :: proc() {
 	}
 	load_sketch(&app)
 	defer editor.destroy_buffer(&app.buf)
-	defer { for s in app.sketches { delete(s) }; delete(app.sketches); delete(app.name_buf) }
+	defer { for s in app.sketches { delete(s) }; delete(app.sketches); delete(app.name_buf); delete(g_ac_matches) }
 
 	// --run: build & launch the sketch immediately on startup (scriptable entry).
 	if has_arg("--run") {

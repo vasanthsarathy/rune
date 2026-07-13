@@ -36,6 +36,25 @@ Token :: struct {
 	return false
 }
 
+// Detects a `<obj>.<prefix>` member-access immediately before `col` (for
+// autocomplete). E.g. on "c.ci" at col 4 -> obj="c", prefix="ci", start=2.
+// `start` is the column where `prefix` begins (after the dot).
+dot_context :: proc(line: []u8, col: int) -> (obj: string, prefix: string, start: int, ok: bool) {
+	c := clamp(col, 0, len(line))
+	i := c
+	for i > 0 && is_ident(line[i-1]) { i -= 1 } // prefix runs back to here
+	if i == 0 || line[i-1] != '.' { return }     // must be preceded by '.'
+	dot := i - 1
+	j := dot
+	for j > 0 && is_ident(line[j-1]) { j -= 1 }   // object ident before the dot
+	if j == dot { return }                        // no object identifier
+	obj    = string(line[j:dot])
+	prefix = string(line[i:c])
+	start  = i
+	ok     = true
+	return
+}
+
 tokenize :: proc(line: []u8, allocator := context.allocator) -> [dynamic]Token {
 	toks := make([dynamic]Token, allocator)
 	i := 0

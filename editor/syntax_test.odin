@@ -39,6 +39,23 @@ import "core:testing"
 	testing.expect_value(t, toks[1].end, 14)
 }
 
+@(test) test_dot_context :: proc(t: ^testing.T) {
+	obj, prefix, start, ok := dot_context(transmute([]u8)string("c.ci"), 4)
+	testing.expect(t, ok)
+	testing.expect_value(t, obj, "c")
+	testing.expect_value(t, prefix, "ci")
+	testing.expect_value(t, start, 2)
+
+	// bare `c.` with empty prefix
+	_, prefix2, _, ok2 := dot_context(transmute([]u8)string("c."), 2)
+	testing.expect(t, ok2)
+	testing.expect_value(t, prefix2, "")
+
+	// not a member access
+	_, _, _, ok3 := dot_context(transmute([]u8)string("foo"), 3)
+	testing.expect(t, !ok3)
+}
+
 @(test) test_tokenize_identifiers_untagged :: proc(t: ^testing.T) {
 	toks := tokenize(transmute([]u8)string("c.circle(x, y, r)"))
 	defer delete(toks)
