@@ -78,8 +78,15 @@ SKETCH_TITLE :: "Odessa Sketch"
 DEFAULT_W    :: 800
 DEFAULT_H    :: 800
 
+@(private) _canvas_rt: rl.RenderTexture2D
+
 // Opens the window, runs setup once, then draws every frame until the window closes.
 // This is the sketch program's entry point (called from the sketch's main).
+//
+// Drawing goes into a PERSISTENT accumulation buffer (a render texture) that is
+// only cleared when the sketch calls background(). This matches Processing: if
+// you don't call background() each frame, points/shapes accumulate — the basis
+// for density plots (strange attractors) and motion trails.
 run :: proc(user_setup: proc(), user_draw: proc()) {
 	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT})
 	rl.InitWindow(DEFAULT_W, DEFAULT_H, SKETCH_TITLE)
@@ -89,20 +96,37 @@ run :: proc(user_setup: proc(), user_draw: proc()) {
 	if user_setup != nil { user_setup() }
 	apply_pending_size()   // honor a size() call made in setup
 
+	// canvas mirrors reflect the actual window; the accumulation buffer matches it
+	width  = int(rl.GetScreenWidth())
+	height = int(rl.GetScreenHeight())
+	_canvas_rt = rl.LoadRenderTexture(i32(width), i32(height))
+	defer rl.UnloadRenderTexture(_canvas_rt)
+	rl.BeginTextureMode(_canvas_rt)
+	rl.ClearBackground(rl.Color{18, 18, 22, 255})
+	rl.EndTextureMode()
+
 	frame := 0
 	for !rl.WindowShouldClose() {
 		mp := rl.GetMousePosition()
 		set_frame_inputs(
-			int(rl.GetScreenWidth()), int(rl.GetScreenHeight()),
+			int(_canvas_rt.texture.width), int(_canvas_rt.texture.height),
 			frame,
 			f32(rl.GetTime()), rl.GetFrameTime(),
 			mp.x, mp.y, rl.IsMouseButtonDown(.LEFT),
 		)
 		frame_begin()
 
-		rl.BeginDrawing()
-		rl.ClearBackground(rl.Color{18, 18, 22, 255})
+		// draw into the persistent buffer (no auto-clear -> accumulation)
+		rl.BeginTextureMode(_canvas_rt)
 		if user_draw != nil { user_draw() }
+		rl.EndTextureMode()
+
+		// blit the buffer to the window (render textures are y-flipped)
+		rl.BeginDrawing()
+		rl.ClearBackground(rl.BLACK)
+		src := rl.Rectangle{0, 0, f32(_canvas_rt.texture.width), -f32(_canvas_rt.texture.height)}
+		dst := rl.Rectangle{0, 0, f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}
+		rl.DrawTexturePro(_canvas_rt.texture, src, dst, rl.Vector2{0, 0}, 0, rl.WHITE)
 		rl.EndDrawing()
 
 		free_all(context.temp_allocator)
