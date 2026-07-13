@@ -4,9 +4,9 @@ import rl "vendor:raylib"
 import "core:strings"
 import "../editor"
 
-ED_FONT   :: 18
-ED_LINE_H :: 22
-GUTTER_W  :: 52
+ED_FONT   :: 20
+ED_LINE_H :: 24
+GUTTER_W  :: 56
 
 // key "goes" this frame: initial press or auto-repeat.
 key_go :: proc(k: rl.KeyboardKey) -> bool {
@@ -66,7 +66,7 @@ editor_input :: proc(b: ^editor.Buffer) {
 	c := clamp(col, 0, len(line))
 	if c == 0 { return 0 }
 	cs := strings.clone_to_cstring(string(line[:c]), context.temp_allocator)
-	return f32(rl.MeasureText(cs, ED_FONT))
+	return measure(cs, ED_FONT)
 }
 
 // Inverse of prefix_w: the column whose left edge is nearest to x pixels.
@@ -111,7 +111,7 @@ BASE_COL :: rl.Color{220, 220, 225, 255}
 @(private="file") draw_span :: proc(line: []u8, lo, hi: int, base_x, y: f32, color: rl.Color) {
 	if hi <= lo { return }
 	cs := strings.clone_to_cstring(string(line[lo:hi]), context.temp_allocator)
-	rl.DrawText(cs, i32(base_x + prefix_w(line, lo)), i32(y), ED_FONT, color)
+	draw_text(cs, base_x + prefix_w(line, lo), y, ED_FONT, color)
 }
 
 editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
@@ -124,7 +124,7 @@ editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
 
 	rl.DrawRectangleRec(area, rl.Color{18, 18, 22, 255})
 	base_x := area.x + GUTTER_W
-	nib := f32(rl.MeasureText("m", ED_FONT)) // nominal width for the newline sliver
+	nib := measure("m", ED_FONT) // nominal width for the newline sliver
 
 	// selection highlight
 	if editor.has_selection(b) {
@@ -149,7 +149,7 @@ editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
 		if ln >= len(b.lines) { break }
 		y := area.y + f32(row*ED_LINE_H)
 		num := rl.TextFormat("%d", ln+1)
-		rl.DrawText(num, i32(area.x)+6, i32(y), ED_FONT, rl.Color{90, 90, 110, 255})
+		draw_text(num, area.x+8, y, ED_FONT, rl.Color{90, 90, 110, 255})
 
 		line := b.lines[ln][:]
 		toks := editor.tokenize(line, context.temp_allocator)

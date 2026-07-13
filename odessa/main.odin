@@ -14,6 +14,42 @@ has_arg :: proc(name: string) -> bool {
 	return false
 }
 
+// --- UI font (a real monospace TTF, loaded once) ---
+FONT_BASE    :: 48 // baked glyph size; DrawTextEx scales down crisply
+TEXT_SPACING :: f32(0)
+
+g_font:        rl.Font
+g_font_custom: bool
+
+load_ui_font :: proc() {
+	candidates := []string{
+		"C:/Windows/Fonts/CascadiaCode.ttf",
+		"C:/Windows/Fonts/CascadiaMono.ttf",
+		"C:/Windows/Fonts/consola.ttf",
+	}
+	for path in candidates {
+		if os.exists(path) {
+			f := rl.LoadFontEx(strings.clone_to_cstring(path, context.temp_allocator), FONT_BASE, nil, 0)
+			if f.glyphCount > 0 {
+				rl.SetTextureFilter(f.texture, .BILINEAR)
+				g_font = f
+				g_font_custom = true
+				return
+			}
+		}
+	}
+	g_font = rl.GetFontDefault()
+	g_font_custom = false
+}
+
+draw_text :: proc(s: cstring, x, y: f32, size: f32, color: rl.Color) {
+	rl.DrawTextEx(g_font, s, rl.Vector2{x, y}, size, TEXT_SPACING, color)
+}
+
+measure :: proc(s: cstring, size: f32) -> f32 {
+	return rl.MeasureTextEx(g_font, s, size, TEXT_SPACING).x
+}
+
 SKETCH_NAME :: "hello"
 SKETCH_DIR  :: "sketches/hello"
 SKETCH_EXE  :: "build/hello.exe"
@@ -35,9 +71,9 @@ App :: struct {
 }
 
 TOOLBAR_H :: 48
-CONSOLE_H :: 150
-LINE_H    :: 18
-FONT_SIZE :: 16
+CONSOLE_H :: 160
+LINE_H    :: 20
+FONT_SIZE :: 18
 
 // Number of console lines that fit in the bottom strip.
 console_visible_lines :: proc() -> int {
@@ -92,8 +128,8 @@ draw_button :: proc(rect: rl.Rectangle, label: cstring, enabled: bool) {
 		col = rl.Color{90, 90, 100, 255}
 	}
 	rl.DrawRectangleRec(rect, col)
-	tw := rl.MeasureText(label, 20)
-	rl.DrawText(label, i32(rect.x) + (i32(rect.width)-tw)/2, i32(rect.y) + 8, 20, rl.WHITE)
+	tw := measure(label, 20)
+	draw_text(label, rect.x + (rect.width-tw)/2, rect.y + 6, 20, rl.WHITE)
 }
 
 do_run :: proc(app: ^App) {
@@ -142,7 +178,7 @@ draw_console_strip :: proc(app: ^App, top_y: int) {
 	rl.DrawRectangle(0, top, rl.GetScreenWidth(), bottom-top, rl.Color{16, 16, 20, 255})
 
 	if len(app.console_lines) == 0 {
-		rl.DrawText("(console)", 8, top+4, FONT_SIZE, rl.Color{90, 90, 100, 255})
+		draw_text("(console)", 8, f32(top)+4, FONT_SIZE, rl.Color{90, 90, 100, 255})
 		return
 	}
 
@@ -150,10 +186,10 @@ draw_console_strip :: proc(app: ^App, top_y: int) {
 	if app.status == .Compile_Error { col = rl.Color{255, 180, 180, 255} }
 
 	max_visible := console_visible_lines()
-	y := top + 4
+	y := f32(top) + 4
 	for i := app.console_scroll; i < len(app.console_lines) && (i - app.console_scroll) < max_visible; i += 1 {
 		ctext := strings.clone_to_cstring(app.console_lines[i], context.temp_allocator)
-		rl.DrawText(ctext, 8, y, FONT_SIZE, col)
+		draw_text(ctext, 8, y, FONT_SIZE, col)
 		y += LINE_H
 	}
 }
@@ -171,7 +207,7 @@ draw_ui :: proc(app: ^App) {
 	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), TOOLBAR_H, rl.Color{32, 32, 38, 255})
 	draw_button(RUN_RECT, "Run", app.status != .Running && app.status != .Compiling)
 	draw_button(STOP_RECT, "Stop", app.status == .Running)
-	rl.DrawText(status_text(app.status), 210, 16, 20, rl.Color{200, 200, 210, 255})
+	draw_text(status_text(app.status), 210, 14, 20, rl.Color{200, 200, 210, 255})
 }
 
 main :: proc() {
@@ -179,6 +215,9 @@ main :: proc() {
 	rl.InitWindow(900, 640, "Odessa")
 	rl.SetTargetFPS(60)
 	defer rl.CloseWindow()
+
+	load_ui_font()
+	defer if g_font_custom { rl.UnloadFont(g_font) }
 
 	app: App
 	app.status = .Idle
