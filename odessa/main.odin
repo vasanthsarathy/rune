@@ -426,7 +426,7 @@ draw_ui :: proc(app: ^App) {
 
 main :: proc() {
 	rl.SetConfigFlags({.WINDOW_RESIZABLE, .WINDOW_HIGHDPI, .MSAA_4X_HINT})
-	rl.InitWindow(1100, 760, "Odessa")
+	rl.InitWindow(1100, 760, "Rune")
 	rl.SetTargetFPS(60)
 	defer rl.CloseWindow()
 

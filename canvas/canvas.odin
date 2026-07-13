@@ -74,7 +74,7 @@ size :: proc(w, h: int) {
 	}
 }
 
-SKETCH_TITLE :: "Odessa Sketch"
+SKETCH_TITLE :: "Rune Sketch"
 DEFAULT_W    :: 800
 DEFAULT_H    :: 800
 

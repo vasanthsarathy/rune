@@ -12,7 +12,7 @@ g_docs_filtered: [dynamic]int // indices into DOCS matching the search
 
 DOCS_LIST_W :: 240
 DOCS_ROW    :: 30
-DOCS_LIST_TOP :: TOOLBAR_H + 66 // below the REFERENCE label + search field
+DOCS_LIST_TOP :: PANEL_TOP + 66 // below the tab bar + REFERENCE label + search field
 
 @(private="file") ci_contains :: proc(hay, needle: string) -> bool {
 	if needle == "" { return true }
@@ -44,6 +44,7 @@ docs_refilter :: proc() {
 // Open docs, optionally jumping to the symbol under the cursor (c.<name>).
 docs_open_at_cursor :: proc(b: ^editor.Buffer) {
 	g_docs_open = true
+	g_ref_tab = .Canvas
 	clear(&g_docs_search)
 	g_docs_sel = 0
 	g_docs_scroll = 0
@@ -72,27 +73,41 @@ docs_row_rect :: proc(i: int) -> rl.Rectangle {
 }
 
 docs_input :: proc() {
-	// search typing
-	for r := rl.GetCharPressed(); r != 0; r = rl.GetCharPressed() {
-		if r >= 32 && r < 128 { append(&g_docs_search, u8(r)) }
+	if rl.IsKeyPressed(.ESCAPE) { g_docs_open = false; return }
+
+	// tab switching: click a tab, or press 1/2/3
+	if rl.IsMouseButtonPressed(.LEFT) {
+		m := rl.GetMousePosition()
+		for i in 0..<3 {
+			if rl.CheckCollisionPointRec(m, ref_tab_rect(i)) {
+				if int(g_ref_tab) != i { g_ref_tab = Ref_Tab(i); g_docs_scroll = 0 }
+			}
+		}
 	}
-	if key_go(.BACKSPACE) && len(g_docs_search) > 0 { pop(&g_docs_search) }
-	docs_refilter()
+	if rl.IsKeyPressed(.ONE)   { g_ref_tab = .Canvas;    g_docs_scroll = 0 }
+	if rl.IsKeyPressed(.TWO)   { g_ref_tab = .Odin;      g_docs_scroll = 0 }
+	if rl.IsKeyPressed(.THREE) { g_ref_tab = .Shortcuts; g_docs_scroll = 0 }
 
-	if key_go(.DOWN) && len(g_docs_filtered) > 0 { g_docs_sel = (g_docs_sel+1) %% len(g_docs_filtered) }
-	if key_go(.UP)   && len(g_docs_filtered) > 0 { g_docs_sel = (g_docs_sel-1) %% len(g_docs_filtered) }
-	if rl.IsKeyPressed(.ESCAPE) { g_docs_open = false }
-
+	// vertical scroll (all tabs)
 	if wheel := rl.GetMouseWheelMove(); wheel != 0 {
-		g_docs_scroll -= int(wheel*3)*DOCS_ROW
+		step := g_ref_tab == .Canvas ? DOCS_ROW : 40
+		g_docs_scroll -= int(wheel*3)*step
 		if g_docs_scroll < 0 { g_docs_scroll = 0 }
 	}
 
-	// click a list row
-	if rl.IsMouseButtonPressed(.LEFT) {
-		m := rl.GetMousePosition()
-		for _, k in g_docs_filtered {
-			if rl.CheckCollisionPointRec(m, docs_row_rect(k)) { g_docs_sel = k; break }
+	if g_ref_tab == .Canvas {
+		for r := rl.GetCharPressed(); r != 0; r = rl.GetCharPressed() {
+			if r >= 32 && r < 128 { append(&g_docs_search, u8(r)) }
+		}
+		if key_go(.BACKSPACE) && len(g_docs_search) > 0 { pop(&g_docs_search) }
+		docs_refilter()
+		if key_go(.DOWN) && len(g_docs_filtered) > 0 { g_docs_sel = (g_docs_sel+1) %% len(g_docs_filtered) }
+		if key_go(.UP)   && len(g_docs_filtered) > 0 { g_docs_sel = (g_docs_sel-1) %% len(g_docs_filtered) }
+		if rl.IsMouseButtonPressed(.LEFT) {
+			m := rl.GetMousePosition()
+			for _, k in g_docs_filtered {
+				if rl.CheckCollisionPointRec(m, docs_row_rect(k)) { g_docs_sel = k; break }
+			}
 		}
 	}
 }
@@ -121,11 +136,21 @@ draw_wrapped :: proc(text: string, x, y, maxw, size: f32, color: rl.Color) -> f3
 }
 
 docs_draw :: proc() {
+	rl.DrawRectangleRec(rl.Rectangle{0, TOOLBAR_H, f32(screen_w()), f32(screen_h()-TOOLBAR_H)}, BG_DEEP)
+	draw_ref_tabs()
+	switch g_ref_tab {
+	case .Canvas:    docs_draw_canvas()
+	case .Odin:      draw_cheatsheet()
+	case .Shortcuts: draw_shortcuts()
+	}
+}
+
+docs_draw_canvas :: proc() {
 	sw := f32(screen_w())
 	sh := f32(screen_h())
-	top: f32 = TOOLBAR_H
+	top: f32 = PANEL_TOP
 
-	// backdrop
+	// left column backdrop
 	rl.DrawRectangleRec(rl.Rectangle{0, top, sw, sh-top}, BG_DEEP)
 
 	// --- left: search + list ---
