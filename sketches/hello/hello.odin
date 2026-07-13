@@ -6,7 +6,7 @@ import "core:math"
 t: f32
 
 setup :: proc() {
-	c.size(800, 800)
+	c.size(1000,1000)
 }
 
 draw :: proc() {

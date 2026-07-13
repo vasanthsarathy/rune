@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    name: build & test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux graphics deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev \
+            libxinerama-dev libxi-dev libgl1-mesa-dev libglu1-mesa-dev
+
+      # NOTE: Rune tracks Odin nightlies. If the action's nightly lacks a feature
+      # this project uses, pin `release:` to a specific dev-YYYY-MM tag here.
+      - name: Install Odin
+        uses: laytan/setup-odin@v2
+        with:
+          nightly: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Version
+        run: odin version
+
+      - name: Unit tests
+        run: |
+          odin test canvas
+          odin test editor
+          odin test runner
+
+      - name: Build IDE
+        run: odin build rune -out:build/rune -o:speed
+
+      - name: Build sketches
+        shell: bash
+        run: |
+          for d in sketches/*/; do
+            odin build "$d" -out:"build/$(basename "$d")" -o:speed
+          done

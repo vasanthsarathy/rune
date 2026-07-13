@@ -15,3 +15,7 @@
 .DS_Store
 Thumbs.db
 .superpowers/
+
+# internal (kept locally, not published)
+_README.md
+docs/superpowers/
