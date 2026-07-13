@@ -13,6 +13,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
+        # Odin validates the -out extension per platform: Windows needs .exe,
+        # Unix takes none. Unset entries render as an empty string.
+        include:
+          - os: windows-latest
+            ext: ".exe"
     steps:
       - uses: actions/checkout@v4
 
@@ -40,12 +45,19 @@ jobs:
           odin test editor
           odin test runner
 
+      # Odin won't create the -out directory; make it before building.
+      - name: Prepare build dir
+        shell: bash
+        run: mkdir -p build
+
       - name: Build IDE
-        run: odin build rune -out:build/rune -o:speed
+        run: odin build rune -out:build/rune${{ matrix.ext }} -o:speed
 
       - name: Build sketches
         shell: bash
+        env:
+          EXT: ${{ matrix.ext }}
         run: |
           for d in sketches/*/; do
-            odin build "$d" -out:"build/$(basename "$d")" -o:speed
+            odin build "$d" -out:"build/$(basename "$d")$EXT" -o:speed
           done
