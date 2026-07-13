@@ -12,6 +12,7 @@ Doc_Entry :: struct {
 	// --- setup / window / loop ---
 	{"size", "c.size(w, h: int)", "Set the canvas size in pixels. Call once in setup.", "setup :: proc() {\n\tc.size(800, 600)\n}"},
 	{"run", "c.run(setup, draw: proc())", "Open the window and run the sketch. Call from main.", "main :: proc() {\n\tc.run(setup, draw)\n}"},
+	{"size_paper", "c.size_paper(p: Paper, dpi=300)", "Set the canvas to a paper size (.A5/.A4/.A3/.Letter/.Tabloid/.Square) at a DPI. Use low DPI for preview, 300 for print.", "setup :: proc() {\n\tc.size_paper(.A4, 96) // screen preview\n}"},
 	{"width", "c.width: int", "Canvas width in pixels (read-only). See also height.", "cx := f32(c.width) * 0.5"},
 	{"height", "c.height: int", "Canvas height in pixels (read-only).", "cy := f32(c.height) * 0.5"},
 
@@ -29,6 +30,8 @@ Doc_Entry :: struct {
 	{"no_stroke", "c.no_stroke()", "Draw following shapes with no outline.", "c.no_stroke()\nc.fill(255)\nc.circle(x, y, 20)"},
 	{"stroke_weight", "c.stroke_weight(w: f32)", "Set line / outline thickness in pixels.", "c.stroke_weight(3)\nc.line(0, 0, 200, 50)"},
 	{"rgb", "c.rgb(r, g, b: u8) -> Color", "Make an opaque color. See also rgba, gray, WHITE, BLACK.", "col := c.rgb(255, 100, 0)"},
+	{"hsl", "c.hsl(h, s, l: f32) -> Color", "HSL color: hue 0..360, saturation & lightness 0..1. Great for palettes. fill/stroke/background accept a Color.", "c.fill(c.hsl(210, 0.6, 0.5))"},
+	{"hsv", "c.hsv(h, s, v: f32) -> Color", "HSV/HSB color: hue 0..360, saturation & value 0..1.", "c.stroke(c.hsv(t*30, 0.8, 1))"},
 
 	// --- shapes ---
 	{"circle", "c.circle(x, y, r: f32)", "Draw a circle centered at (x, y) with radius r.", "c.circle(c.mouse_x, c.mouse_y, 30)"},

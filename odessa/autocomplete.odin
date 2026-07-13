@@ -7,12 +7,12 @@ import "../editor"
 // The canvas public API, offered when the user types `c.` in a sketch.
 @(rodata) CANVAS_API := [?]string{
 	// setup / window / loop
-	"size", "run", "width", "height",
+	"size", "size_paper", "run", "width", "height",
 	// time / input
 	"frame_count", "time", "delta_time", "mouse", "mouse_x", "mouse_y", "mouse_pressed",
 	// color & style
 	"background", "fill", "no_fill", "stroke", "no_stroke", "stroke_weight",
-	"Color", "rgb", "rgba", "gray", "WHITE", "BLACK",
+	"Color", "rgb", "rgba", "gray", "hsl", "hsv", "WHITE", "BLACK",
 	// shapes
 	"circle", "rect", "line", "point",
 	// math

@@ -20,3 +20,27 @@ import "core:testing"
 	testing.expect(t, WHITE == Color{255, 255, 255, 255})
 	testing.expect(t, BLACK == Color{0, 0, 0, 255})
 }
+
+@(test) test_hsl :: proc(t: ^testing.T) {
+	testing.expect(t, hsl(0, 1, 0.5)   == Color{255, 0, 0, 255})
+	testing.expect(t, hsl(120, 1, 0.5) == Color{0, 255, 0, 255})
+	testing.expect(t, hsl(240, 1, 0.5) == Color{0, 0, 255, 255})
+	testing.expect(t, hsl(0, 0, 1)     == WHITE)
+	testing.expect(t, hsl(0, 0, 0)     == BLACK)
+	testing.expect(t, hsl(360, 1, 0.5) == hsl(0, 1, 0.5)) // wraps
+}
+
+@(test) test_hsv :: proc(t: ^testing.T) {
+	testing.expect(t, hsv(0, 1, 1) == Color{255, 0, 0, 255})
+	testing.expect(t, hsv(0, 0, 1) == WHITE)
+	testing.expect(t, hsv(0, 0, 0) == BLACK)
+}
+
+@(test) test_paper_px :: proc(t: ^testing.T) {
+	w, h := paper_px(.A4, 300)
+	testing.expect_value(t, w, 2480)
+	testing.expect_value(t, h, 3508)
+	w2, h2 := paper_px(.A4, 72)
+	testing.expect_value(t, w2, 595)
+	testing.expect_value(t, h2, 842)
+}
