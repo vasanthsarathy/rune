@@ -40,7 +40,8 @@ Shortcut :: struct { keys, desc: string }
 
 @(rodata) SHORTCUTS := []Shortcut{
 	{"Ctrl + R", "Run the current sketch"},
-	{"Ctrl + S", "Save the sketch"},
+	{"Ctrl + S", "Save the sketch (in the editor)"},
+	{"Ctrl + S", "Export canvas to PNG (in a running sketch window)"},
 	{"F1", "Open docs (jumps to the symbol under the cursor)"},
 	{"Esc", "Close docs / cancel"},
 	{"Ctrl + = / -", "Zoom the editor font in / out"},

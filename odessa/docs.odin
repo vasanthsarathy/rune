@@ -13,6 +13,7 @@ Doc_Entry :: struct {
 	{"size", "c.size(w, h: int)", "Set the canvas size in pixels. Call once in setup.", "setup :: proc() {\n\tc.size(800, 600)\n}"},
 	{"run", "c.run(setup, draw: proc())", "Open the window and run the sketch. Call from main.", "main :: proc() {\n\tc.run(setup, draw)\n}"},
 	{"size_paper", "c.size_paper(p: Paper, dpi=300)", "Set the canvas to a paper size (.A5/.A4/.A3/.Letter/.Tabloid/.Square) at a DPI. Use low DPI for preview, 300 for print.", "setup :: proc() {\n\tc.size_paper(.A4, 96) // screen preview\n}"},
+	{"save_frame", "c.save_frame()", "Export the canvas to output/export-NNN.png at full resolution. Also bound to Ctrl+S in the sketch window.", "if c.frame_count == 120 {\n\tc.save_frame()\n}"},
 	{"width", "c.width: int", "Canvas width in pixels (read-only). See also height.", "cx := f32(c.width) * 0.5"},
 	{"height", "c.height: int", "Canvas height in pixels (read-only).", "cy := f32(c.height) * 0.5"},
 

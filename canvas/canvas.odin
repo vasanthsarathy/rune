@@ -1,6 +1,9 @@
 package canvas
 
 import rl "vendor:raylib"
+import "core:os"
+import "core:fmt"
+import "core:strings"
 
 PI  :: 3.14159265358979323846
 TAU :: 2.0 * PI
@@ -67,13 +70,6 @@ size :: proc(w, h: int) {
 	mouse_pressed = pressed
 }
 
-@(private) apply_pending_size :: proc() {
-	if _size_dirty {
-		rl.SetWindowSize(i32(_pending_w), i32(_pending_h))
-		_size_dirty = false
-	}
-}
-
 SKETCH_TITLE :: "Rune Sketch"
 DEFAULT_W    :: 800
 DEFAULT_H    :: 800
@@ -94,12 +90,22 @@ run :: proc(user_setup: proc(), user_draw: proc()) {
 	defer rl.CloseWindow()
 
 	if user_setup != nil { user_setup() }
-	apply_pending_size()   // honor a size() call made in setup
 
-	// canvas mirrors reflect the actual window; the accumulation buffer matches it
-	width  = int(rl.GetScreenWidth())
-	height = int(rl.GetScreenHeight())
-	_canvas_rt = rl.LoadRenderTexture(i32(width), i32(height))
+	// Canvas (= export) size from size(); the window is a fit-to-screen preview,
+	// so large print canvases scale down on screen but export at full resolution.
+	cw := _size_dirty ? _pending_w : DEFAULT_W
+	ch := _size_dirty ? _pending_h : DEFAULT_H
+	_size_dirty = false
+	width, height = cw, ch
+
+	mon := rl.GetCurrentMonitor()
+	max_w := int(f32(rl.GetMonitorWidth(mon)) * 0.9)
+	max_h := int(f32(rl.GetMonitorHeight(mon)) * 0.85)
+	dw, dh := _fit(cw, ch, max_w, max_h)
+	rl.SetWindowSize(i32(dw), i32(dh))
+	rl.SetWindowPosition((rl.GetMonitorWidth(mon)-i32(dw))/2, (rl.GetMonitorHeight(mon)-i32(dh))/2)
+
+	_canvas_rt = rl.LoadRenderTexture(i32(cw), i32(ch))
 	defer rl.UnloadRenderTexture(_canvas_rt)
 	rl.BeginTextureMode(_canvas_rt)
 	rl.ClearBackground(rl.Color{18, 18, 22, 255})
@@ -107,14 +113,17 @@ run :: proc(user_setup: proc(), user_draw: proc()) {
 
 	frame := 0
 	for !rl.WindowShouldClose() {
+		// map mouse from window (preview) coords into canvas coords
 		mp := rl.GetMousePosition()
-		set_frame_inputs(
-			int(_canvas_rt.texture.width), int(_canvas_rt.texture.height),
-			frame,
-			f32(rl.GetTime()), rl.GetFrameTime(),
-			mp.x, mp.y, rl.IsMouseButtonDown(.LEFT),
-		)
+		sx := f32(cw) / f32(rl.GetScreenWidth())
+		sy := f32(ch) / f32(rl.GetScreenHeight())
+		set_frame_inputs(cw, ch, frame, f32(rl.GetTime()), rl.GetFrameTime(), mp.x*sx, mp.y*sy, rl.IsMouseButtonDown(.LEFT))
 		frame_begin()
+
+		// Ctrl+S exports the canvas to output/export-NNN.png at full resolution
+		if (rl.IsKeyDown(.LEFT_CONTROL) || rl.IsKeyDown(.RIGHT_CONTROL)) && rl.IsKeyPressed(.S) {
+			save_frame()
+		}
 
 		// draw into the persistent buffer (no auto-clear -> accumulation)
 		rl.BeginTextureMode(_canvas_rt)
@@ -124,7 +133,7 @@ run :: proc(user_setup: proc(), user_draw: proc()) {
 		// blit the buffer to the window (render textures are y-flipped)
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.BLACK)
-		src := rl.Rectangle{0, 0, f32(_canvas_rt.texture.width), -f32(_canvas_rt.texture.height)}
+		src := rl.Rectangle{0, 0, f32(cw), -f32(ch)}
 		dst := rl.Rectangle{0, 0, f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}
 		rl.DrawTexturePro(_canvas_rt.texture, src, dst, rl.Vector2{0, 0}, 0, rl.WHITE)
 		rl.EndDrawing()
@@ -132,4 +141,24 @@ run :: proc(user_setup: proc(), user_draw: proc()) {
 		free_all(context.temp_allocator)
 		frame += 1
 	}
+}
+
+@(private) _fit :: proc(w, h, maxw, maxh: int) -> (int, int) {
+	if w <= maxw && h <= maxh { return w, h }
+	s := min(f32(maxw)/f32(w), f32(maxh)/f32(h))
+	return int(f32(w)*s), int(f32(h)*s)
+}
+
+@(private) _save_count: int
+
+// Export the current canvas to a PNG (output/export-NNN.png) at full resolution.
+// Bound to Ctrl+S in the sketch window; also callable from a sketch.
+save_frame :: proc() {
+	if err := os.make_directory("output"); err != nil { /* likely exists; fine */ }
+	img := rl.LoadImageFromTexture(_canvas_rt.texture)
+	defer rl.UnloadImage(img)
+	rl.ImageFlipVertical(&img) // render textures are stored y-flipped
+	name := fmt.tprintf("output/export-%03d.png", _save_count)
+	_save_count += 1
+	rl.ExportImage(img, strings.clone_to_cstring(name, context.temp_allocator))
 }
