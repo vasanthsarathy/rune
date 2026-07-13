@@ -23,9 +23,9 @@ g_font_custom: bool
 
 load_ui_font :: proc() {
 	candidates := []string{
-		"C:/Windows/Fonts/CascadiaCode.ttf",
+		"C:/Windows/Fonts/consola.ttf",     // Consolas: narrow, light, very readable
 		"C:/Windows/Fonts/CascadiaMono.ttf",
-		"C:/Windows/Fonts/consola.ttf",
+		"C:/Windows/Fonts/CascadiaCode.ttf",
 	}
 	for path in candidates {
 		if os.exists(path) {
@@ -239,10 +239,18 @@ main :: proc() {
 		ctrl := rl.IsKeyDown(.LEFT_CONTROL) || rl.IsKeyDown(.RIGHT_CONTROL)
 
 		// editor edits (typing goes here; Ctrl combos for run/save handled below)
+		prev_cursor := app.buf.cursor
 		editor_input(&app.buf)
 		editor_mouse(&app.buf, editor_area(), app.ed_scroll)
+		// only chase the cursor when it actually moved (so wheel scrolling sticks)
+		if app.buf.cursor != prev_cursor {
+			ensure_cursor_visible(&app.buf, &app.ed_scroll, editor_visible_lines(editor_area()))
+		}
 
 		if ctrl && rl.IsKeyPressed(.S) { save_sketch(&app) }
+		// Ctrl +/- : adjust editor font size
+		if ctrl && (rl.IsKeyPressed(.EQUAL) || rl.IsKeyPressed(.KP_ADD))      { g_ed_font = clamp(g_ed_font+2, 10, 40) }
+		if ctrl && (rl.IsKeyPressed(.MINUS) || rl.IsKeyPressed(.KP_SUBTRACT)) { g_ed_font = clamp(g_ed_font-2, 10, 40) }
 
 		run_now  := button_clicked(RUN_RECT, app.status != .Running && app.status != .Compiling) || (ctrl && rl.IsKeyPressed(.R))
 		stop_now := button_clicked(STOP_RECT, app.status == .Running)
@@ -250,12 +258,19 @@ main :: proc() {
 		if run_now  { do_run(&app) }
 		if stop_now { do_stop(&app) }
 
+		// Mouse wheel: Ctrl+wheel zooms; otherwise scroll whichever pane is hovered.
 		if wheel := rl.GetMouseWheelMove(); wheel != 0 {
-			app.console_scroll -= int(wheel * 3)
+			if ctrl {
+				g_ed_font = clamp(g_ed_font + wheel, 10, 40)
+			} else if rl.CheckCollisionPointRec(rl.GetMousePosition(), editor_area()) {
+				app.ed_scroll -= int(wheel * 3)
+			} else {
+				app.console_scroll -= int(wheel * 3)
+			}
 		}
-		// Clamp scroll here (update phase), guarding a shrunk window.
-		max_scroll := max(0, len(app.console_lines) - console_visible_lines())
-		app.console_scroll = clamp(app.console_scroll, 0, max_scroll)
+		// Clamp both scrolls (guards shrunk window / font changes).
+		app.console_scroll = clamp(app.console_scroll, 0, max(0, len(app.console_lines) - console_visible_lines()))
+		app.ed_scroll      = clamp(app.ed_scroll, 0, max(0, len(app.buf.lines) - editor_visible_lines(editor_area())))
 
 		// --- draw ---
 		rl.BeginDrawing()

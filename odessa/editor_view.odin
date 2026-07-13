@@ -4,9 +4,23 @@ import rl "vendor:raylib"
 import "core:strings"
 import "../editor"
 
-ED_FONT   :: 20
-ED_LINE_H :: 24
-GUTTER_W  :: 56
+GUTTER_W :: 56
+
+// Editor font size is adjustable at runtime (Ctrl+wheel / Ctrl +/-).
+g_ed_font: f32 = 16
+
+ed_line_h :: proc() -> f32 { return g_ed_font * 1.35 }
+
+editor_visible_lines :: proc(area: rl.Rectangle) -> int {
+	return int(area.height / ed_line_h())
+}
+
+// Scroll the editor so the cursor is on screen (call after cursor-moving input).
+ensure_cursor_visible :: proc(b: ^editor.Buffer, scroll: ^int, visible: int) {
+	if b.cursor.line < scroll^                { scroll^ = b.cursor.line }
+	if b.cursor.line >= scroll^ + visible - 1 { scroll^ = b.cursor.line - visible + 2 }
+	if scroll^ < 0 { scroll^ = 0 }
+}
 
 // key "goes" this frame: initial press or auto-repeat.
 key_go :: proc(k: rl.KeyboardKey) -> bool {
@@ -66,7 +80,7 @@ editor_input :: proc(b: ^editor.Buffer) {
 	c := clamp(col, 0, len(line))
 	if c == 0 { return 0 }
 	cs := strings.clone_to_cstring(string(line[:c]), context.temp_allocator)
-	return measure(cs, ED_FONT)
+	return measure(cs, g_ed_font)
 }
 
 // Inverse of prefix_w: the column whose left edge is nearest to x pixels.
@@ -98,7 +112,7 @@ editor_mouse :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: int) {
 	if !rl.IsMouseButtonPressed(.LEFT) { return }
 	m := rl.GetMousePosition()
 	if !rl.CheckCollisionPointRec(m, area) { return }
-	line := scroll + int((m.y - area.y) / ED_LINE_H)
+	line := scroll + int((m.y - area.y) / ed_line_h())
 	line = clamp(line, 0, len(b.lines)-1)
 	col  := col_at_x(b.lines[line][:], m.x - area.x - GUTTER_W)
 	editor.set_cursor(b, line, col) // set_cursor clamps
@@ -111,20 +125,19 @@ BASE_COL :: rl.Color{220, 220, 225, 255}
 @(private="file") draw_span :: proc(line: []u8, lo, hi: int, base_x, y: f32, color: rl.Color) {
 	if hi <= lo { return }
 	cs := strings.clone_to_cstring(string(line[lo:hi]), context.temp_allocator)
-	draw_text(cs, base_x + prefix_w(line, lo), y, ED_FONT, color)
+	draw_text(cs, base_x + prefix_w(line, lo), y, g_ed_font, color)
 }
 
 editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
-	visible := int(area.height) / ED_LINE_H
+	visible := editor_visible_lines(area)
 
-	// keep cursor visible
-	if b.cursor.line < scroll^            { scroll^ = b.cursor.line }
-	if b.cursor.line >= scroll^ + visible { scroll^ = b.cursor.line - visible + 1 }
-	if scroll^ < 0 { scroll^ = 0 }
+	// Clamp scroll to a valid range. Following the cursor happens in the update
+	// phase (ensure_cursor_visible), so manual wheel scrolling isn't fought here.
+	scroll^ = clamp(scroll^, 0, max(0, len(b.lines) - visible))
 
 	rl.DrawRectangleRec(area, rl.Color{18, 18, 22, 255})
 	base_x := area.x + GUTTER_W
-	nib := measure("m", ED_FONT) // nominal width for the newline sliver
+	nib := measure("m", g_ed_font) // nominal width for the newline sliver
 
 	// selection highlight
 	if editor.has_selection(b) {
@@ -136,10 +149,10 @@ editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
 			hi := len(b.lines[ln]) if ln < end.line else end.col
 			x0 := base_x + prefix_w(b.lines[ln][:], lo)
 			x1 := base_x + prefix_w(b.lines[ln][:], hi)
-			y := area.y + f32(row)*ED_LINE_H
+			y := area.y + f32(row)*ed_line_h()
 			w := x1 - x0
 			if ln < end.line { w += nib } // show the trailing newline as a sliver
-			rl.DrawRectangleRec(rl.Rectangle{x0, y, w, ED_LINE_H}, rl.Color{50, 70, 120, 255})
+			rl.DrawRectangleRec(rl.Rectangle{x0, y, w, ed_line_h()}, rl.Color{50, 70, 120, 255})
 		}
 	}
 
@@ -147,9 +160,9 @@ editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
 	for row in 0..<visible {
 		ln := scroll^ + row
 		if ln >= len(b.lines) { break }
-		y := area.y + f32(row*ED_LINE_H)
+		y := area.y + f32(row)*ed_line_h()
 		num := rl.TextFormat("%d", ln+1)
-		draw_text(num, area.x+8, y, ED_FONT, rl.Color{90, 90, 110, 255})
+		draw_text(num, area.x+8, y, g_ed_font, rl.Color{90, 90, 110, 255})
 
 		line := b.lines[ln][:]
 		toks := editor.tokenize(line, context.temp_allocator)
@@ -166,7 +179,7 @@ editor_draw :: proc(b: ^editor.Buffer, area: rl.Rectangle, scroll: ^int) {
 	crow := b.cursor.line - scroll^
 	if crow >= 0 && crow < visible {
 		cx := base_x + prefix_w(b.lines[b.cursor.line][:], b.cursor.col)
-		cy := area.y + f32(crow)*ED_LINE_H
-		rl.DrawRectangleRec(rl.Rectangle{cx, cy, 2, ED_LINE_H}, rl.Color{240, 240, 120, 255})
+		cy := area.y + f32(crow)*ed_line_h()
+		rl.DrawRectangleRec(rl.Rectangle{cx, cy, 2, ed_line_h()}, rl.Color{240, 240, 120, 255})
 	}
 }
