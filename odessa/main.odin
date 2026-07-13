@@ -78,7 +78,26 @@ App :: struct {
 	ed_scroll:      int,           // editor's first visible line
 	sketches:       [dynamic]string, // sketch names found under sketches/
 	current:        int,             // index into sketches (the open one)
+	naming:         bool,            // typing a name for a new sketch
+	name_buf:       [dynamic]u8,     // the new sketch name being typed
 }
+
+NEW_SKETCH_TEMPLATE :: `package main
+
+import c "../../canvas"
+
+setup :: proc() {
+	c.size(900, 900)
+}
+
+draw :: proc() {
+	c.background(12, 12, 16)
+}
+
+main :: proc() {
+	c.run(setup, draw)
+}
+`
 
 TOOLBAR_H  :: 48
 SIDEBAR_W  :: 150
@@ -101,6 +120,7 @@ editor_area :: proc() -> rl.Rectangle {
 
 // Populate app.sketches from the subdirectories of sketches/.
 list_sketches :: proc(app: ^App) {
+	for s in app.sketches { delete(s) }
 	clear(&app.sketches)
 	fis, err := os.read_all_directory_by_path(SKETCHES_ROOT, context.allocator)
 	if err != nil { return }
@@ -134,6 +154,44 @@ open_sketch :: proc(app: ^App, idx: int) {
 	app.current = idx
 	app.ed_scroll = 0
 	load_sketch(app)
+}
+
+@(private="file") is_name_char :: proc(c: u8) -> bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-'
+}
+
+// Create a new sketch folder from the template and open it. No-op on empty /
+// already-existing names.
+create_sketch :: proc(app: ^App) {
+	name := strings.clone(string(app.name_buf[:]), context.temp_allocator)
+	clear(&app.name_buf)
+	if name == "" { return }
+	if os.exists(sketch_dir(name)) { return } // don't clobber an existing sketch
+
+	if err := os.make_directory(sketch_dir(name)); err != nil { return }
+	_ = os.write_entire_file(sketch_file(name), transmute([]u8)string(NEW_SKETCH_TEMPLATE))
+
+	save_sketch(app)     // persist current edits before switching
+	editor.destroy_buffer(&app.buf)
+	list_sketches(app)   // rescan so the new sketch appears
+	app.current = 0
+	for n, i in app.sketches {
+		if n == name { app.current = i; break }
+	}
+	app.ed_scroll = 0
+	load_sketch(app)
+}
+
+// One frame of name-entry input (active while app.naming).
+name_input :: proc(app: ^App) {
+	for r := rl.GetCharPressed(); r != 0; r = rl.GetCharPressed() {
+		if r < 128 && is_name_char(u8(r)) && len(app.name_buf) < 40 {
+			append(&app.name_buf, u8(r))
+		}
+	}
+	if key_go(.BACKSPACE) && len(app.name_buf) > 0 { pop(&app.name_buf) }
+	if rl.IsKeyPressed(.ENTER)  { create_sketch(app); app.naming = false }
+	if rl.IsKeyPressed(.ESCAPE) { clear(&app.name_buf); app.naming = false }
 }
 
 status_text :: proc(s: Status) -> cstring {
@@ -229,15 +287,31 @@ draw_console_strip :: proc(app: ^App, top_y: int) {
 	}
 }
 
-// Screen rect of the sketch list entry at index i.
+// "+ New" button occupies the first sidebar row; sketch rows follow below it.
+new_button_rect :: proc() -> rl.Rectangle {
+	return rl.Rectangle{0, TOOLBAR_H, SIDEBAR_W, SKETCH_ROW}
+}
 sketch_row_rect :: proc(i: int) -> rl.Rectangle {
-	return rl.Rectangle{0, f32(TOOLBAR_H + i*SKETCH_ROW), SIDEBAR_W, SKETCH_ROW}
+	return rl.Rectangle{0, f32(TOOLBAR_H + (i+1)*SKETCH_ROW), SIDEBAR_W, SKETCH_ROW}
 }
 
 draw_sidebar :: proc(app: ^App) {
 	sh := rl.GetScreenHeight()
 	rl.DrawRectangle(0, TOOLBAR_H, SIDEBAR_W, sh-TOOLBAR_H, rl.Color{28, 28, 34, 255})
 	mouse := rl.GetMousePosition()
+
+	// "+ New" row: shows a text field while naming, otherwise a button.
+	nb := new_button_rect()
+	if app.naming {
+		rl.DrawRectangleRec(nb, rl.Color{40, 46, 60, 255})
+		label := strings.clone_to_cstring(strings.concatenate({"", string(app.name_buf[:]), "_"}, context.temp_allocator), context.temp_allocator)
+		draw_text(label, 8, nb.y+5, 17, rl.Color{235, 235, 240, 255})
+	} else {
+		hov := rl.CheckCollisionPointRec(mouse, nb)
+		rl.DrawRectangleRec(nb, hov ? rl.Color{50, 60, 50, 255} : rl.Color{34, 40, 34, 255})
+		draw_text("+ New", 8, nb.y+5, 17, rl.Color{150, 200, 150, 255})
+	}
+
 	for name, i in app.sketches {
 		r := sketch_row_rect(i)
 		bg := rl.Color{28, 28, 34, 255}
@@ -250,10 +324,16 @@ draw_sidebar :: proc(app: ^App) {
 	rl.DrawRectangle(SIDEBAR_W-1, TOOLBAR_H, 1, sh-TOOLBAR_H, rl.Color{50, 50, 58, 255})
 }
 
-// Handle a click on the sketch list; returns true if a switch happened.
+// Handle a click in the sidebar (the + New button, or a sketch row).
 sidebar_click :: proc(app: ^App) {
 	if !rl.IsMouseButtonPressed(.LEFT) { return }
 	m := rl.GetMousePosition()
+	if rl.CheckCollisionPointRec(m, new_button_rect()) {
+		app.naming = true
+		clear(&app.name_buf)
+		return
+	}
+	if app.naming { return } // finish naming (Enter/Esc) before switching
 	for _, i in app.sketches {
 		if rl.CheckCollisionPointRec(m, sketch_row_rect(i)) {
 			open_sketch(app, i)
@@ -305,6 +385,7 @@ main :: proc() {
 	}
 	load_sketch(&app)
 	defer editor.destroy_buffer(&app.buf)
+	defer { for s in app.sketches { delete(s) }; delete(app.sketches); delete(app.name_buf) }
 
 	// --run: build & launch the sketch immediately on startup (scriptable entry).
 	if has_arg("--run") {
@@ -320,16 +401,21 @@ main :: proc() {
 
 		ctrl := rl.IsKeyDown(.LEFT_CONTROL) || rl.IsKeyDown(.RIGHT_CONTROL)
 
-		// sketch list clicks (switch the open sketch)
+		// sketch list clicks (+ New, or switch the open sketch)
 		sidebar_click(&app)
 
-		// editor edits (typing goes here; Ctrl combos for run/save handled below)
-		prev_cursor := app.buf.cursor
-		editor_input(&app.buf)
-		editor_mouse(&app.buf, editor_area(), app.ed_scroll)
-		// only chase the cursor when it actually moved (so wheel scrolling sticks)
-		if app.buf.cursor != prev_cursor {
-			ensure_cursor_visible(&app.buf, &app.ed_scroll, editor_visible_lines(editor_area()))
+		if app.naming {
+			// typing the name of a new sketch — editor input is suspended
+			name_input(&app)
+		} else {
+			// editor edits (typing goes here; Ctrl combos for run/save handled below)
+			prev_cursor := app.buf.cursor
+			editor_input(&app.buf)
+			editor_mouse(&app.buf, editor_area(), app.ed_scroll)
+			// only chase the cursor when it actually moved (so wheel scrolling sticks)
+			if app.buf.cursor != prev_cursor {
+				ensure_cursor_visible(&app.buf, &app.ed_scroll, editor_visible_lines(editor_area()))
+			}
 		}
 
 		if ctrl && rl.IsKeyPressed(.S) { save_sketch(&app) }
